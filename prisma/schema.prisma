@@ -1,0 +1,127 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+// 一个标准的 schema.prisma 主要包含三个部分：
+
+// 1. datasource：告诉 Prisma 你要连哪个数据库（PostgreSQL、MySQL、SQLite 等），以及连接地址（通常放在 .env 里用 env("DATABASE_URL") 引用，避免泄露密码）。
+
+// 2. generator：告诉 Prisma 要生成什么客户端代码（通常就是 prisma-client-js 或新版的 prisma-client）。
+
+// 3. 数据模型（model）：用来定义具体的表（模型）、字段和表之间的关系
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// 一个用户在团队中担任的角色
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  username     String    @unique @db.VarChar(32)
+  email        String    @unique @db.VarChar(255)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  avatarUrl    String?   @map("avatar_url")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  // 反向关系字段（下面这些不是数据库列，而是 Prisma 用来导航关系的“虚拟字段”）
+  memberships   TeamMember[]
+  createdTeams  Team[]       @relation("TeamCreator")
+  createdTasks  Task[]       @relation("TaskCreator")
+  assignedTasks Task[]       @relation("TaskAssignee")
+  comments      Comment[]
+
+  @@map("users")
+}
+
+model Team {
+  id          String    @id @default(uuid()) @db.Uuid
+  name        String    @db.VarChar(64)
+  description String?
+  createdById String    @map("created_by") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  createdBy User         @relation("TeamCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  members   TeamMember[]
+  tasks     Task[]
+
+  @@index([createdById])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId   String   @map("team_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model Task {
+  id            String     @id @default(uuid()) @db.Uuid
+  teamId        String     @map("team_id") @db.Uuid
+  title         String     @db.VarChar(200)
+  description   String?
+  estimateHours Int?       @map("estimate_hours") @db.SmallInt
+  status        TaskStatus @default(TODO)
+  priority      Int        @default(2) @db.SmallInt
+  assigneeId    String?    @map("assignee_id") @db.Uuid
+  createdById   String     @map("created_by") @db.Uuid
+  dueAt         DateTime?  @map("due_at") @db.Timestamptz(3)
+  completedAt   DateTime?  @map("completed_at") @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt     DateTime?  @map("deleted_at") @db.Timestamptz(3)
+
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignee  User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdBy User      @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  comments  Comment[]
+
+  @@index([teamId, status, createdAt])
+  @@index([assigneeId])
+  @@map("tasks")
+}
+
+model Comment {
+  id        String    @id @default(uuid()) @db.Uuid
+  taskId    String    @map("task_id") @db.Uuid
+  authorId  String    @map("author_id") @db.Uuid
+  content   String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, createdAt])
+  @@map("comments")
+}

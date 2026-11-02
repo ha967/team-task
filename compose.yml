@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: team-task-postgres
+    # 重启策略
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      # 时区设置
+      TZ: UTC
+    ports:
+      - '${POSTGRES_PORT}:5432'
+    # 数据卷挂载
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  pgdata:

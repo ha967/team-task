@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { TasksModule } from './tasks/tasks.module.js';
+import { UserModule } from './user/uesr.module.js';
+import { PrismaModule } from './prisma/prisma.module.js';
 
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
@@ -14,6 +17,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       appSecret: 'YOUR_APP_SECRET',
       serviceId: 'team-task',
     }),
+    TasksModule,
+    UserModule,
+    PrismaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
