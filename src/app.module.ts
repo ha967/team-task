@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
-import { AppController } from './app.controller.js';
-import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { TasksModule } from './tasks/tasks.module.js';
 import { UserModule } from './user/user.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -33,7 +33,10 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         AuthModule,
         PrismaModule,
     ],
-    controllers: [AppController],
-    providers: [AppService],
+    controllers: [],
+    providers: [
+        // 全局守卫：默认所有路由都要求登录，需要放行的接口加 @Public()
+        { provide: APP_GUARD, useClass: JwtAuthGuard },
+    ],
 })
 export class AppModule {}

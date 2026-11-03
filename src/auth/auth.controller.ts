@@ -1,21 +1,23 @@
 import { Body, Controller, HttpCode, Post } from '@nestjs/common';
+import { Public } from '../common/decorators/public.decorator.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 
+@Public()
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+    constructor(private readonly authService: AuthService) {}
 
-  @Post('register')
-  register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto);
-  }
+    @Post('register')
+    register(@Body() dto: RegisterDto) {
+        return this.authService.register(dto);
+    }
 
-  // 登录是"读取"语义，用 200 比默认的 201 更符合 REST 习惯
-  @Post('login')
-  @HttpCode(200)
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
-  }
+    // 登录是"读取"语义，用 200 比默认的 201 更符合 REST 习惯
+    @Post('login')
+    @HttpCode(200)
+    login(@Body() dto: LoginDto) {
+        return this.authService.login(dto);
+    }
 }

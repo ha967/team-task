@@ -81,6 +81,7 @@ npx prisma studio # 浏览器里查看/编辑数据
 # NestJs
 
 NestJs中模块，控制器，提供者
+安全设计：默认关闭永远优于默认放行。
 
 ## 控制器
 
@@ -130,6 +131,17 @@ create(@Body("age") age) {
 ```
 
 ## 提供者
+
+在一个模块中，提供者是对外提供服务的文件，一般命名为 xxx.service.ts，默认该提供者的作用域只在该模块内
+
+```ts
+@Injectable()
+export class TasksService {}
+
+// TasksModule中在provider数组中导入声明，即可在该模块下使用
+```
+
+如果想要在其他模块也使用，需要在module中export该提供者，然后在具体使用的模块处import [TaskModule]，这样TaskModule的TaskService就可以在这里使用了。
 
 ## 模块
 
@@ -199,11 +211,118 @@ forRoot() / register() 返回的 DynamicModule 对象本质上仍是模块描述
 
 ## 中间件
 
-一个请求进入 NestJS 后，大致流向是：中间件 → 守卫 → 拦截器 → 管道 → Controller。
-这意味着，中间件是最早接触到请求的环节之一。也正因如此，它适合做那些“全局性”的预处理
+中间件函数可以访问请求和响应对象，以及应用程序请求-响应周期中的 next() 中间件函数。 下一个中间件函数通常由名为 next 的变量表示。
+中间件函数可以执行以下任务：
+
+- 执行任意代码。
+- 修改请求和响应对象。
+- 结束请求-响应周期。
+- 调用堆栈中的下一个中间件函数。
+- 如果当前中间件函数没有结束请求-响应周期，它必须调用 next() 将控制权传递给下一个中间件函数。否则，请求将被挂起。
+
+一个请求进入 NestJS 后，大致流向是：中间件 → 守卫 → 拦截器（前） → 管道 → 控制器 → 拦截器（后） → 过滤器（仅异常时）。
+作用：最接近底层 Express 的环节，用于处理原始请求，如日志、CORS、Body 解析等。
+环节：请求进入 Nest 后的第一站，在路由匹配和守卫之前执行。它无法方便地使用 Nest 的依赖注入（除非特殊配置）。
+
+### 类中间件
+
+如何创建一个中间件：
+
+```typescript
+import { Injectable, NestMiddleware } from '@nestjs/common';
+
+// 在函数中或在带有 @Injectable() 装饰器的类中实现自定义 Nest 中间件。该类应该实现 NestMiddleware 接口，而函数没有任何特殊要求
+@Injectable()
+export class LoggerMiddleware implements NestMiddleware {
+    use(req: any, res: any, next: () => void) {
+        console.log(`Request... ${req.method} ${req.originalUrl}`);
+        // send和next二选一，res.send可以进行拦击，next的话就继续下一步操作
+        res.send('我被拦截了');
+        next();
+    }
+}
+```
+
+然后在模块处引入中间件，包含中间件的模块必须实现 NestModule 接口。
+
+```typescript
+@Module({
+    provider: [UserService],
+    controller: [UserController],
+})
+export class UserModule implements NestModule {
+    configure(consumer: MiddlewareConsumer) {
+        consumer
+            .apply(LoggerMiddleware)
+            // 排除某些路由不应用中间件
+            .exclude(
+                { path: 'user', method: RequestMethod.GET },
+                { path: 'user', method: RequestMethod.POST },
+                'user/{*splat}',
+            )
+            // forRoutes可接收单个字符串、多个字符串、RouteInfo 对象、控制器类甚至多个控制器类。多数情况下只需传入逗号分隔的控制器列表。
+            .forRoutes(UserController);
+    }
+}
+```
+
+### 函数中间件
+
+如果中间件（LoggerMiddleware） 类非常简单。它没有成员变量、没有额外方法、也没有依赖项。实际上是直接用一个简单函数来定义它。这种类型的中间件被称为函数式中间件 。让我们将基于类的日志中间件转换为函数式中间件来说明两者的区别：
+
+```ts
+import { Request, Response, NextFunction } from 'express';
+
+export function logger(req: Request, res: Response, next: NextFunction) {
+    console.log(`Request...`);
+    next();
+}
+```
+
+并在 AppModule 中使用它：
+
+```ts
+consumer.apply(logger).forRoutes(CatsController);
+```
+
+提示:
+当中间件不需要任何依赖项时，请考虑使用更简单的 函数式中间件 替代方案。
+
+### 全局中间件
+
+如果我们需要一次性将中间件绑定到所有已注册的路由，可以使用 INestApplication 实例提供的 use() 方法：
+
+```ts
+// main.ts
+const app = await NestFactory.create(AppModule);
+app.use(logger);
+await app.listen(process.env.PORT ?? 3000);
+```
+
+注意:在全局中间件中无法访问 DI 容器。使用 app.use() 时，可以改用函数式中间件 。或者，也可以使用类中间件并通过 AppModule（或其他模块）中的 .forRoutes('*') 来消费它
 
 守卫（Guards）：处理认证与授权。比如用 JWT 守卫保护需要登录的路由。
 
 拦截器（Interceptors）：适合做响应格式统一、日志记录等
 
 管道（Pipes）：做数据校验和转换。配合 class-validator 和 DTO（数据传输对象），在请求进入业务逻辑前就拦截掉非法参数。
+
+## 守卫
+
+作用：授权。判断请求是否允许访问路由（如检查 Token、角色权限），返回 true 放行，false 则抛出 ForbiddenException 拒绝。
+环节：在中间件之后、管道之前执行。此时路由已确定，但请求体尚未经过管道验证和转换。
+
+## 管道
+
+作用：数据转换与验证。对控制器方法的参数进行处理，例如用 ValidationPipe 校验 DTO，或将字符串 "123" 转为数字 123。
+环节：在守卫之后、控制器方法执行之前运行。它只处理即将传入处理函数的参数。
+
+## 拦截器
+
+作用：包裹处理函数的执行。可以在方法执行前后添加逻辑（如记录耗时、统一响应格式、缓存），并能捕获下游（管道/控制器/服务）抛出的错误。
+环节：分两段执行。请求进入时在管道之前（Pre），响应返回时在控制器之后（Post），且后段顺序与进入时相反。
+
+## 过滤器
+
+作用：异常兜底。捕获请求处理过程中未被捕获的异常，并转换为友好的 HTTP 响应格式。
+环节：仅在发生异常时触发，且会跳过剩余生命周期直接进入过滤器。它的查找顺序是从路由级到全局级，与其它组件相反。

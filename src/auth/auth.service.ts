@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { UserService } from '../user/user.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
-import { JwtPayload } from './types/jwt-payload.js';
+import { JwtPayload } from '../common/types/jwt-payload.js';
 
 @Injectable()
 export class AuthService {

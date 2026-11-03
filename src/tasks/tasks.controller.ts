@@ -1,47 +1,48 @@
 import {
-  Body,
-  Param,
-  Headers,
-  Controller,
-  Get,
-  Post,
-  Query,
-  Patch,
-  Delete,
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Param,
+    ParseUUIDPipe,
+    Patch,
+    Post,
+    Query,
 } from '@nestjs/common';
-import { TasksService } from './tasks.service.js';
-import { ListTasksQueryDto } from './dto/list-tasks-query.dto.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
+import { ListTasksQueryDto } from './dto/list-tasks-query.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
+import { TasksService } from './tasks.service.js';
 
 @Controller('tasks')
 export class TasksController {
-  constructor(private readonly tasksService: TasksService) {}
+    constructor(private readonly tasksService: TasksService) {}
 
-  @Get()
-  getTasks(@Query() query: ListTasksQueryDto) {
-    return this.tasksService.getTasks(query);
-  }
+    @Get()
+    getTasks(@Query() query: ListTasksQueryDto) {
+        return this.tasksService.getTasks(query);
+    }
 
-  @Post()
-  addTask(@Headers('x-user-id') userId: string, @Body() body: CreateTaskDto) {
-    return this.tasksService.addTask(userId, body);
-  }
+    @Post()
+    addTask(@CurrentUser('sub') userId: string, @Body() body: CreateTaskDto) {
+        return this.tasksService.addTask(userId, body);
+    }
+    // ParseUUIDPipe会判断非法 UUID 直接返回 400, 而不是让 Prisma 抛 500
+    @Patch(':taskId')
+    updateTask(
+        @CurrentUser('sub') userId: string,
+        @Param('taskId', ParseUUIDPipe) id: string,
+        @Body() body: UpdateTaskDto,
+    ) {
+        return this.tasksService.updateTask(userId, id, body);
+    }
 
-  @Patch(':taskId')
-  updateTask(
-    @Headers('x-user-id') userId: string,
-    @Param('taskId') id: string,
-    @Body() body: UpdateTaskDto,
-  ) {
-    return this.tasksService.updateTask(userId, id, body);
-  }
-
-  @Delete(':taskId')
-  deleteTask(
-    @Headers('x-user-id') userId: string,
-    @Param('taskId') id: string,
-  ) {
-    return this.tasksService.deleteTask(userId, id);
-  }
+    @Delete(':taskId')
+    deleteTask(
+        @CurrentUser('sub') userId: string,
+        @Param('taskId', ParseUUIDPipe) id: string,
+    ) {
+        return this.tasksService.deleteTask(userId, id);
+    }
 }
