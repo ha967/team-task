@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule, type JwtSignOptions } from '@nestjs/jwt';
+import { PrismaModule } from '../prisma/prisma.module.js';
 import { UserModule } from '../user/user.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 
 @Module({
   imports: [
+    PrismaModule,
     UserModule,
     JwtModule.registerAsync({
       inject: [ConfigService],

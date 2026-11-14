@@ -41,7 +41,14 @@ export class JwtAuthGuard implements CanActivate {
 
         try {
             // 验签 + 校验过期时间，失败会抛错，统一转成 401
-            request.user = await this.jwtService.verifyAsync<JwtPayload>(token);
+            const payload = await this.jwtService.verifyAsync<JwtPayload>(token);
+
+            // refresh token 不能当作 access token 使用
+            if (payload.typ !== 'access' || !payload.sub) {
+                throw new Error('invalid token type');
+            }
+
+            request.user = payload;
         } catch {
             throw new UnauthorizedException('访问令牌无效或已过期');
         }
