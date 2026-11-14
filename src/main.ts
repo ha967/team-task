@@ -8,6 +8,8 @@ async function bootstrap() {
         instrument: ObserveInstrument,
         abortOnError: false,
     });
+    // 前端统一通过 /api 访问后端，开发环境由 Vite 代理转发
+    app.setGlobalPrefix('api');
     // 通过URI上的v1/v2 走不同的接口
     app.enableVersioning({ type: VersioningType.URI });
     app.useGlobalPipes(
@@ -21,6 +23,7 @@ async function bootstrap() {
         }),
     );
     app.enableShutdownHooks();
-    await app.listen(process.env.PORT ?? 3000);
+    // 端口来自根目录 .env 的 PORT；默认 3001，避免和其他项目的 3000 端口冲突
+    await app.listen(process.env.PORT ?? 3001);
 }
 await bootstrap();
