@@ -24,7 +24,10 @@ interface RequestOptions extends Omit<RequestInit, 'body' | 'headers'> {
 // 多个请求同时 401 时，只发起一次刷新，其余的等同一个 Promise
 let refreshPromise: Promise<boolean> | null = null;
 
-export async function apiFetch<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiFetch<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const { body, headers, skipAuth = false, ...rest } = options;
 
   const send = (token: string | null) =>

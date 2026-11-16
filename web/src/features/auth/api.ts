@@ -1,5 +1,10 @@
 import { apiFetch } from '../../shared/api/http';
-import type { AuthResponse, LoginPayload, RegisterPayload, User } from './types';
+import type {
+  AuthResponse,
+  LoginPayload,
+  RegisterPayload,
+  User,
+} from './types';
 
 export const authApi = {
   login(payload: LoginPayload) {

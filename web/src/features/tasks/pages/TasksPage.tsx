@@ -63,7 +63,9 @@ export function TasksPage() {
       {error ? <p className="error">{error}</p> : null}
 
       {!loading && !error && tasks.length === 0 ? (
-        <p className="muted">还没有任务，先运行 npx prisma db seed 造点数据。</p>
+        <p className="muted">
+          还没有任务，先运行 npx prisma db seed 造点数据。
+        </p>
       ) : null}
 
       <ul className="task-list">

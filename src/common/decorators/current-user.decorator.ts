@@ -6,10 +6,10 @@ import type { JwtPayload } from '../types/jwt-payload.js';
 //   @CurrentUser() user: JwtPayload        → 整个 payload
 //   @CurrentUser('sub') userId: string     → 只取用户 ID
 export const CurrentUser = createParamDecorator(
-    (data: keyof JwtPayload | undefined, ctx: ExecutionContext) => {
-        const request = ctx.switchToHttp().getRequest<{ user?: JwtPayload }>();
-        const user = request.user;
+  (data: keyof JwtPayload | undefined, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest<{ user?: JwtPayload }>();
+    const user = request.user;
 
-        return data ? user?.[data] : user;
-    },
+    return data ? user?.[data] : user;
+  },
 );

@@ -9,7 +9,12 @@ import {
 } from 'react';
 import { authApi } from './api';
 import { tokenStorage } from './token-storage';
-import type { AuthResponse, LoginPayload, RegisterPayload, User } from './types';
+import type {
+  AuthResponse,
+  LoginPayload,
+  RegisterPayload,
+  User,
+} from './types';
 
 interface AuthContextValue {
   user: User | null;
