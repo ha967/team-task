@@ -51,7 +51,7 @@ npm run test:e2e       # vitest run -c vitest.config.e2e.ts
 npx prisma migrate dev --name add_xxx   # 改完 schema 后
 npx prisma generate                     # 迁移后重新生成 client
 npx prisma db seed                      # tsx prisma/seed.ts（alice/bob/carol，密码 Password123!）
-npx prisma studio
+npx prisma studio                      # 图形化查看数据，默认 http://localhost:5555（详见 docs/README.md）
 ```
 
 ## 数据库

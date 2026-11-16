@@ -133,9 +133,13 @@ export class TasksService {
     return { id: taskId, deleted: true };
   }
 
-  async getTasks(query: ListTasksQueryDto) {
+  async getTasks(query: ListTasksQueryDto, userId: string) {
     const where = {
       deletedAt: null,
+      team: {
+        deletedAt: null,
+        members: { some: { userId } },
+      },
       ...(query.status ? { status: query.status } : {}),
       ...(query.assigneeId ? { assigneeId: query.assigneeId } : {}),
     };

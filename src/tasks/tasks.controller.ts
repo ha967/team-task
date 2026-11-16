@@ -20,8 +20,11 @@ export class TasksController {
   constructor(private readonly tasksService: TasksService) {}
 
   @Get()
-  getTasks(@Query() query: ListTasksQueryDto) {
-    return this.tasksService.getTasks(query);
+  getTasks(
+    @Query() query: ListTasksQueryDto,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.tasksService.getTasks(query, userId);
   }
 
   @Post()

@@ -76,7 +76,29 @@ npx prisma migrate dev --name <动词_描述> (--name <动词_描述>类似git �
 
 npx prisma db seed # 手动造数据（幂等，随时可跑）
 npx prisma migrate reset # 清库 → 重放所有迁移 → 自动跑 seed（开发专用）
-npx prisma studio # 浏览器里查看/编辑数据
+npx prisma studio # 浏览器里查看/编辑数据（详见下一节）
+
+### Prisma Studio（图形化查看数据库）
+
+不想装客户端又想看表里有什么的时候，用 Prisma 自带的网页版数据浏览器。
+
+```bash
+npx prisma studio                      # 默认 http://localhost:5555
+npx prisma studio --port 5555          # 指定端口（5555 被占用时）
+npx prisma studio --browser firefox    # 指定浏览器打开
+```
+
+前提：Postgres 容器已起（`docker compose up -d`），且 `.env` 里的 `DATABASE_URL` 能连上。
+
+几个要点：
+
+- Studio 用的是根目录 `prisma7.config.ts` 里的连接配置（注意文件名是 `prisma7.config.ts`，不是 `prisma.config.ts`），所以一般不用额外传参；要临时连别的库才用 `--url "<连接串>"`。
+- 左侧列表按 `prisma/schema.prisma` 里的 model 来：User / Team / TeamMember / Task / Comment / RefreshToken，对应数据库里的 snake_case 表。
+- 点进某张表可以过滤、排序、直接改单元格、新增行、删除行，改动**立即写库**，没有事务也没有撤销，调试期用来核对数据最方便。
+- 它只能按模型看行，写不了 SQL、做不了多表 join；真要写 SQL 就用 `psql`、`pg_dump` 或者桌面客户端（DBeaver / pgAdmin），连 `localhost:5432` 即可。
+- 别随手改 `passwordHash`：bcrypt 哈希改坏了对应账号就登不上。seed 出来的账号密码是 `Password123!`，真弄坏了跑一次 `npx prisma db seed` 恢复。
+- 软删除字段 `deletedAt` 在 Studio 里不会自动过滤，看到的可能是全量数据，别以为查询漏了 `deletedAt: null`。
+- 直接改库不会走业务逻辑（refresh token 轮换、软删除等都在 service 里），所以只用来查看 / 造临时测试数据。
 
 # NestJs
 
