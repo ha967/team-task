@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
 import { TasksModule } from './tasks/tasks.module.js';
 import { UserModule } from './user/user.module.js';
+import { TeamsModule } from './teams/teams.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { validateEnv } from './config/env.validation.js';
 
@@ -32,6 +33,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     UserModule,
     AuthModule,
     PrismaModule,
+    TeamsModule,
   ],
   controllers: [],
   providers: [

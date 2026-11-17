@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { TeamAccessService } from '../teams/team-access.service.js';
 import { CreateTaskDto } from './dto/create-task.dto.js';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
@@ -28,17 +29,21 @@ const TASK_SELECT = {
 
 @Injectable()
 export class TasksService {
-  constructor(private readonly prismaService: PrismaService) {}
+  constructor(
+    private readonly prismaService: PrismaService,
+    // 团队权限判定统一走 TeamAccessService，不在本服务里另留一份副本
+    private readonly teamAccess: TeamAccessService,
+  ) {}
 
   async addTask(userId: string, body: CreateTaskDto) {
     // 检查团队是否存在
-    await this.assertTeamExists(body.teamId);
+    await this.teamAccess.assertTeamExists(body.teamId);
     // 检查用户是否是团队成员
-    await this.assertTeamMember(body.teamId, userId);
+    await this.teamAccess.assertTeamMember(body.teamId, userId);
 
     if (body.assigneeId) {
       // 校验负责人也是团队成员 →
-      await this.assertTeamMember(body.teamId, body.assigneeId);
+      await this.teamAccess.assertTeamMember(body.teamId, body.assigneeId);
     }
 
     return this.prismaService.task.create({
@@ -69,7 +74,10 @@ export class TasksService {
   async updateTask(userId: string, taskId: string, body: UpdateTaskDto) {
     // 先检查任务是否存在，顺便拿到 teamId、createdById、assigneeId
     const task = await this.getTaskOrThrow(taskId);
-    const membership = await this.assertTeamMember(task.teamId, userId);
+    const membership = await this.teamAccess.assertTeamMember(
+      task.teamId,
+      userId,
+    );
 
     const canModify =
       task.createdById === userId ||
@@ -85,7 +93,7 @@ export class TasksService {
     }
 
     if (body.assigneeId) {
-      await this.assertTeamMember(task.teamId, body.assigneeId);
+      await this.teamAccess.assertTeamMember(task.teamId, body.assigneeId);
     }
 
     return this.prismaService.task.update({
@@ -115,7 +123,10 @@ export class TasksService {
 
   async deleteTask(userId: string, taskId: string) {
     const task = await this.getTaskOrThrow(taskId);
-    const membership = await this.assertTeamMember(task.teamId, userId);
+    const membership = await this.teamAccess.assertTeamMember(
+      task.teamId,
+      userId,
+    );
 
     const canDelete =
       task.createdById === userId || membership.role !== 'MEMBER';
@@ -176,29 +187,5 @@ export class TasksService {
     }
 
     return task;
-  }
-
-  private async assertTeamExists(teamId: string) {
-    const team = await this.prismaService.team.findFirst({
-      where: { id: teamId, deletedAt: null },
-      select: { id: true },
-    });
-
-    if (!team) {
-      throw new NotFoundException('团队不存在');
-    }
-  }
-
-  private async assertTeamMember(teamId: string, userId: string) {
-    const membership = await this.prismaService.teamMember.findUnique({
-      where: { teamId_userId: { teamId, userId } },
-      select: { role: true },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException('你不是该团队成员');
-    }
-
-    return membership;
   }
 }
