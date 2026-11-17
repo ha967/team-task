@@ -100,6 +100,133 @@ npx prisma studio --browser firefox    # 指定浏览器打开
 - 软删除字段 `deletedAt` 在 Studio 里不会自动过滤，看到的可能是全量数据，别以为查询漏了 `deletedAt: null`。
 - 直接改库不会走业务逻辑（refresh token 轮换、软删除等都在 service 里），所以只用来查看 / 造临时测试数据。
 
+## 表设计与建模规范
+
+### 为什么要有 team_members 表：多对多与关联实体
+
+先看关系的基数：一个 User 可以加入多个 Team，一个 Team 包含多个 User，**两边都是“多”，所以概念模型上是 M:N**。
+
+关系型数据库没有“多值字段”（不像 Mongo 可以在文档里塞一个 `members: []` 数组），M:N 在物理上**必须**落成一张中间表，`team_members` 就是那张表。
+
+但这张表比“纯连接表”多了一层东西，两者要分清楚：
+
+|                  | 纯连接表（junction table） | 关联实体（association entity，本项目的情况） |
+| ---------------- | -------------------------- | -------------------------------------------- |
+| 列               | 只有两个外键               | 外键 + `role`、`joinedAt` 等业务列           |
+| 语义             | “A 和 B 有关系”            | “这次加入本身是一件有属性的事实”             |
+| 能否被别的表引用 | 一般不能                   | 能（前提是有自己的主键）                     |
+
+因为带了 `role`（OWNER / ADMIN / MEMBER）和 `joinedAt`，这条关系就**升级成了实体**——“某人以某角色在某天加入某团队”，这个事实有属性、有生命周期，所以值得一张正式的表。
+
+如果只是“谁在哪个团队”的纯关系、不带任何属性，用 Prisma 的**隐式多对多**就够了，Prisma 会自己建一张只有两列的 `_TeamToUser` 表：
+
+```prisma
+// 隐式 m-n：别这么写，因为我们要存 role
+model User { teams  Team[] }
+model Team { members User[] }
+```
+
+一旦需要角色、邀请时间、邀请人、是否已退出等字段，就必须**显式建表**（Prisma 文档里叫 explicit many-to-many relationship）。
+
+这张表的三行关键声明
+
+```prisma
+model TeamMember {
+  teamId String   @map("team_id") @db.Uuid
+  userId String   @map("user_id") @db.Uuid
+  role   TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+
+  @@id([teamId, userId])   // 复合主键
+  @@index([userId])        // 反向查询的索引
+  @@map("team_members")    // 表名映射
+}
+```
+
+- `@@id([teamId, userId])` 同时干了三件事：标识一行、给 `team_id` 建索引（复合主键的最左前缀）、**用约束保证“同一人不能重复加入同一团队”**。用数据库约束表达业务规则，比在代码里 `if (exists) throw` 可靠得多——并发下也不会漏。
+- `@@index([userId])`：主键索引的顺序是 `(team_id, user_id)`，能高效回答“这个团队有哪些人”，但回答不了“我加入了哪些团队”（最左前缀用不上）。所以要在 `user_id` 上补一个索引。**Postgres 不会自动给外键列建索引**，这是最容易漏的一步。
+- `onDelete: Cascade`：删团队 → 成员关系一起消失（合理）；删用户 → 成员关系一起消失（也合理）。注意 `Task.createdBy` 用的是 `Restrict`，这是有意的区分：**业务数据（任务）不能因为删人就消失，关系数据（成员关系）可以**。
+
+主键选型上，这里用复合主键而不是再加一个 `id uuid` 是对的——成员关系天然由 `(团队, 用户)` 唯一确定，加代理键只会多一列冗余索引。只有当 `team_members` 需要被别的表引用（比如“邀请记录指向某条成员关系”），或者 API 想用 `PATCH /team-members/:id` 时，才升级成带 `id` 的实体。
+
+### 表设计“标准”
+
+**理论**
+
+- **范式**：1NF 字段原子（不塞 JSON 数组、不用逗号分隔串）→ 2NF 非主属性完全依赖整个主键（`role` 依赖 `(teamId, userId)` 整体而非只依赖 `teamId`，所以这张表符合）→ 3NF 消除传递依赖（`tasks` 里不该存 `team_name`，只存 `team_id`）。实务目标是 3NF，然后**为了读性能有理由地反范式**（报表表、冗余计数列）。
+- **完整性**：外键必须显式声明；`NOT NULL` 尽量加；唯一性用 `UNIQUE` 而不是只靠代码；取值范围用 `CHECK` 或 enum。
+- SQL 标准（ISO/IEC 9075）只规定语言语法，不规定你怎么建模。
+
+**工程惯例（各家规范大同小异）**，对照本项目的现状：
+
+| 维度 | 通行做法                                                                                        | 本项目现状                                                    |
+| ---- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| 命名 | 表名复数 snake_case、列 snake_case、外键 `<单数>_id`、时间戳 `created_at/updated_at/deleted_at` | ✅ 由 `@map` / `@@map` 兜住                                   |
+| 主键 | 自增 bigint 或 uuid；折中用 UUIDv7 / ULID（有时间序，避免随机插入造成 B-tree 页分裂）           | ✅ uuid v4，安全但插入随机；量大再考虑 v7                     |
+| 时间 | 一律 `timestamptz`、存 UTC                                                                      | ✅ `@db.Timestamptz(3)`                                       |
+| 金额 | `numeric`，不用 `float`                                                                         | —（暂无金额字段）                                             |
+| 删除 | 软删 `deleted_at`，查询恒带 `IS NULL`                                                           | ✅ 但与唯一约束有冲突，见下                                   |
+| 索引 | 按真实查询的 `WHERE / JOIN / ORDER BY` 建，复合索引守最左前缀，外键列补索引                     | ✅ `[teamId, status, createdAt]`、`[userId]` 等都是照查询建的 |
+| 迁移 | 只做加法：先加可空列 → 回填 → 再收紧；变更走 migration 文件，不手改库                           | ✅ 走 `prisma migrate`                                        |
+| 安全 | 密码 / 令牌只存哈希，敏感字段加密，最小权限账号                                                 | ✅ `password_hash`、`token_hash`                              |
+
+可参考的材料：PostgreSQL wiki 的 _Don't Do This_、各社区手册里的数据库章节（如阿里《Java 开发手册》，规则通用）、以及各种 ORM 的默认约定（本质是别人替你总结好的规范）。
+
+**加表时的自查清单**，每次过一遍：
+
+1. 这张表一行代表什么？一句话说得清吗？（说不清通常意味着混了两个概念）
+2. 哪些列必须非空？哪些组合必须唯一？这些约束写进 schema 了吗？
+3. 每个外键的删除语义是什么：Cascade / Restrict / SetNull，是**有意选的**还是默认的？
+4. 主要查询是什么？对应索引建了吗？有没有索引被别的复合索引的最左前缀完全覆盖（冗余）？
+5. 时间列是否 UTC + `timestamptz`？`updated_at` 由谁写入？
+6. 软删的表：`UNIQUE` 和软删冲突了吗？查询是否都带了 `deleted_at IS NULL`？
+7. 有没有可由其他列推导出的冗余列？有就写下理由。
+
+### 本项目现有设计的已知问题
+
+对着上面的清单体检 `prisma/schema.prisma`，有几处值得后续处理：
+
+**1. 软删与唯一约束冲突（真实 bug 级）**
+
+`User.username` / `User.email` 是 `@unique`，但 `User` 有 `deletedAt` 软删。用户被软删后，邮箱和用户名**仍然占着唯一约束**：新人用同一邮箱注册会撞 `ConflictException`，而 `GET /users` 又看不到那个“已删除”的用户，排查时非常费解。
+
+正解是 Postgres 的**部分唯一索引**（只对未删除的行生效）：
+
+```sql
+CREATE UNIQUE INDEX users_email_active_key ON users (email) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX users_username_active_key ON users (username) WHERE deleted_at IS NULL;
+```
+
+Prisma schema 目前没法声明部分索引，要写进 migration SQL：`npx prisma migrate dev --name fix_soft_delete_unique --create-only`，编辑生成的 `migration.sql` 后再 `npx prisma migrate dev` 应用。这就是“标准知道在哪，ORM 表达不了就用 SQL 兜底”的典型情况。
+
+**2. `Task.priority` 没有取值范围约束**
+
+`priority Int @default(2)` 只靠代码保证 1~4，任何直接写库的路径（Studio、psql、脚本）都能写进 99。可在 migration 里加：
+
+```sql
+ALTER TABLE tasks ADD CONSTRAINT tasks_priority_range CHECK (priority BETWEEN 1 AND 4);
+```
+
+Prisma 对 `CHECK` 的支持同样是“schema 里写不了，迁移里手写”。
+
+**3. `Comment.author` 用了 `onDelete: Cascade`**
+
+删用户会把他的评论连带删掉。通常评论是团队的历史资产，应该保留（改成 `Restrict`，或依赖用户软删 + 用 `SetNull` 并让 `authorId` 可空）。
+
+**4. `Task.assigneeId` 无法在库层面保证“被指派人属于该团队”**
+
+现在靠 `src/teams/team-access.service.ts` 的 `TeamAccessService.assertTeamMember` 兜（tasks 与 teams 共用同一份实现）。库层面可以用**复合外键**做到：
+
+```sql
+FOREIGN KEY (team_id, assignee_id) REFERENCES team_members (team_id, user_id)
+```
+
+但 `assignee_id` 可空、`team_id` 非空，Prisma 对这种“部分可空”的复合外键支持很差，所以实际仍在应用层校验。知道有这条路，将来遇到“应用层校验不放心”的场景可以用原生 SQL 补。
+
+**5. `team_members` 没有 `deletedAt` / `leftAt`**
+
+用户退队或管理员移除成员只能硬删行，团队历史就没了（“这人上个月是不是在这队”答不上来）。两种选择：加 `leftAt` 保留历史，或明确接受“成员关系是一次性事实”——在目前这个阶段，后者够用。
+
 # NestJs
 
 NestJs中模块，控制器，提供者
@@ -257,12 +384,12 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 // 在函数中或在带有 @Injectable() 装饰器的类中实现自定义 Nest 中间件。该类应该实现 NestMiddleware 接口，而函数没有任何特殊要求
 @Injectable()
 export class LoggerMiddleware implements NestMiddleware {
-    use(req: any, res: any, next: () => void) {
-        console.log(`Request... ${req.method} ${req.originalUrl}`);
-        // send和next二选一，res.send可以进行拦击，next的话就继续下一步操作
-        res.send('我被拦截了');
-        next();
-    }
+  use(req: any, res: any, next: () => void) {
+    console.log(`Request... ${req.method} ${req.originalUrl}`);
+    // send和next二选一，res.send可以进行拦击，next的话就继续下一步操作
+    res.send('我被拦截了');
+    next();
+  }
 }
 ```
 
@@ -270,22 +397,22 @@ export class LoggerMiddleware implements NestMiddleware {
 
 ```typescript
 @Module({
-    provider: [UserService],
-    controller: [UserController],
+  provider: [UserService],
+  controller: [UserController],
 })
 export class UserModule implements NestModule {
-    configure(consumer: MiddlewareConsumer) {
-        consumer
-            .apply(LoggerMiddleware)
-            // 排除某些路由不应用中间件
-            .exclude(
-                { path: 'user', method: RequestMethod.GET },
-                { path: 'user', method: RequestMethod.POST },
-                'user/{*splat}',
-            )
-            // forRoutes可接收单个字符串、多个字符串、RouteInfo 对象、控制器类甚至多个控制器类。多数情况下只需传入逗号分隔的控制器列表。
-            .forRoutes(UserController);
-    }
+  configure(consumer: MiddlewareConsumer) {
+    consumer
+      .apply(LoggerMiddleware)
+      // 排除某些路由不应用中间件
+      .exclude(
+        { path: 'user', method: RequestMethod.GET },
+        { path: 'user', method: RequestMethod.POST },
+        'user/{*splat}',
+      )
+      // forRoutes可接收单个字符串、多个字符串、RouteInfo 对象、控制器类甚至多个控制器类。多数情况下只需传入逗号分隔的控制器列表。
+      .forRoutes(UserController);
+  }
 }
 ```
 
@@ -297,8 +424,8 @@ export class UserModule implements NestModule {
 import { Request, Response, NextFunction } from 'express';
 
 export function logger(req: Request, res: Response, next: NextFunction) {
-    console.log(`Request...`);
-    next();
+  console.log(`Request...`);
+  next();
 }
 ```
 
@@ -354,3 +481,24 @@ await app.listen(process.env.PORT ?? 3000);
 
 作用：异常兜底。捕获请求处理过程中未被捕获的异常，并转换为友好的 HTTP 响应格式。
 环节：仅在发生异常时触发，且会跳过剩余生命周期直接进入过滤器。它的查找顺序是从路由级到全局级，与其它组件相反。
+
+# 工作流
+
+新增功能或者修改功能是，可以通过/spec command(.claude/commands)来描述改动，会先判断这件事属于哪一档，并会通过不断的追问来完善改动
+
+在./claude/settings.json中配置了每次对话结束后都会执行.claude/hooks/gate.sh。
+首先会先判断「工作区脏不脏」（改动提交（或 revert）之后，门禁才会恢复「纯对话轮次跳过」），如果工作区无改动，则直接放行。
+如果有改动，且改动包含:
+
+- src/
+- test/
+- tsconfig.json
+- tsconfig.build.json
+- tsconfig.test.json
+  那么就会执行触发门禁后续逻辑，进行lint测试（tsc），单元测试（e2e）
+  如果上述测试通过，门禁放行，失败则回灌给大模型。
+
+lint测试通过，单元测试通过后，还需要通过/verify command对本次改动进行验证，包含
+L0 → gate.sh 再跑一遍（面向验收）
+L1 → 派 reviewer 看 diff，带 spec 当基准
+L2 → 逐条核对 AC 表格
