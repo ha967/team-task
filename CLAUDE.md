@@ -74,14 +74,39 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 | `prisma/` | schema、migrations、seed |
 | `web/src/` | React 前端（`app/` 路由、`features/`、`shared/`） |
 | `docs/README.md` | 中文学习笔记（Nest / Prisma 基础概念） |
+| `docs/specs/` | 每轮开发的 spec（`_template.md` 为模板） |
+| `.claude/commands/` | `/spec`、`/verify` 两个工作流命令 |
+| `.claude/agents/` | `reviewer` 独立审查者（只读） |
+| `.claude/hooks/` | `gate.sh` 机械门禁，挂在 Stop hook 上 |
 | `test/` | e2e 测试目录 |
 
 ## 已知缺口（改动时留意）
 - 没有 teams / comments 的 controller；团队和评论目前只有 schema + seed 数据。
-- `GET /tasks` 未按调用者所属团队过滤，任何登录用户都能看到全库未删除任务。
 - 除默认 e2e 外没有单元测试；`test/app.e2e-spec.ts` 期望 `GET /` 返回 `Hello World!`，与现有代码不符（无 `AppController`）。
 - `src/logger.middeware.ts` 是未接入的示例中间件（文件名拼写如此）。
 - `ObserveModule` 的 appKey / appSecret 仍是占位值。
+- schema 层面待修（详见 `docs/README.md` 的「本项目现有设计的已知问题」）：`users` 的 `username` / `email` 唯一约束与软删冲突，需改成 `WHERE deleted_at IS NULL` 的部分唯一索引；`tasks.priority` 缺 `CHECK` 约束；`Comment.author` 的 `onDelete: Cascade` 会连带删评论。
+
+## 开发工作流
+三档，别一律全套跑（流程比改动重就是负担）：
+- **轻**（1–2 个文件 / 修 bug）：动手前用 5 行复述 + 列出不确定点，确认后实现，然后 `/verify`。
+- **中**（单模块新功能）：`/spec` → 实现 → `/verify`。
+- **重**（跨模块 / 动 schema / 碰认证权限 / 新依赖）：`/spec` 走完多轮追问 → 小步实现 → `/verify`。
+
+## 必须停下来问的情况
+不要靠猜，也不要替我做决定。命中任一条就先问：
+- 有多种合理实现且成本差异大（要不要新建 module、要不要抽公共方法）
+- 需要打破既有约定，或要改公共接口 / `prisma/schema.prisma` / 迁移 / 新依赖 / 新环境变量
+- 业务语义需要猜（权限规则、状态流转、默认值）
+- 需求里出现「顺便」「也」「优化一下」「更友好」这类模糊词 —— 追问出具体含义
+- 我给的方案有明显代价而我没意识到 —— 直接指出来，别闷头照做
+
+能自己从代码库查到的事实一律自己查，不要拿能查的东西问我。
+
+## 验收
+- 机械门禁由 Stop hook 自动执行（`.claude/hooks/gate.sh`：lint + 后端 tsc；有 `*.spec.ts` 后自动加跑测试）。
+- 审查一律派**独立上下文的 `reviewer` 子代理**，只给它 diff 和 spec，**不要先给它我的判断** —— 带着结论去审只会验证结论。
+- 审查发现的新问题，回写进 `.claude/agents/reviewer.md` 的清单，让它越用越准。
 
 ## 提交规范
 - 目前直接在 `main` 上开发；commit message 形如 `feat: 中文描述`（Conventional Commits 前缀 + 中文短语）。
