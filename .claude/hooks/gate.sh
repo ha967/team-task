@@ -12,6 +12,19 @@ fi;
 
 cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0;
 
+# 本轮没有代码改动就直接放行：Stop 每轮回复都触发，纯对话轮次不该付 3–8 秒门禁成本。
+# 只看 src / test 和会影响检查结果的两个配置；改 docs / web 时门禁本来也验不到东西。
+# GATE_ALWAYS=1 可强制跑（改了工具链想立刻验证时用）。
+if [ "${GATE_ALWAYS:-0}" != "1" ]; then
+  # 不是 git 仓库时无从判断改动，宁可跑门禁（fail-safe）
+  if git rev-parse --git-dir > /dev/null 2>&1; then
+    changed=$(git status --porcelain=v1 -uall -- src test tsconfig.json tsconfig.build.json 2>/dev/null);
+    if [ -z "$changed" ]; then
+      exit 0;
+    fi;
+  fi;
+fi;
+
 failed=0;
 
 # 执行一步门禁，失败则记录错误输出但不中断后续步骤（一次把问题全暴露出来）

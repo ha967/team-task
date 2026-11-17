@@ -104,7 +104,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 能自己从代码库查到的事实一律自己查，不要拿能查的东西问我。
 
 ## 验收
-- 机械门禁由 Stop hook 自动执行（`.claude/hooks/gate.sh`：lint + 后端 tsc；有 `*.spec.ts` 后自动加跑测试）。
+- 机械门禁由 Stop hook 自动执行（`.claude/hooks/gate.sh`：lint + 后端 tsc；有 `*.spec.ts` 后自动加跑测试；`src` / `test` / tsconfig 无改动时跳过）。
 - 审查一律派**独立上下文的 `reviewer` 子代理**，只给它 diff 和 spec，**不要先给它我的判断** —— 带着结论去审只会验证结论。
 - 审查发现的新问题，回写进 `.claude/agents/reviewer.md` 的清单，让它越用越准。
 
