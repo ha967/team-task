@@ -88,10 +88,11 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 - schema 层面待修（详见 `docs/README.md` 的「本项目现有设计的已知问题」）：`users` 的 `username` / `email` 唯一约束与软删冲突，需改成 `WHERE deleted_at IS NULL` 的部分唯一索引；`tasks.priority` 缺 `CHECK` 约束；`Comment.author` 的 `onDelete: Cascade` 会连带删评论。
 
 ## 开发工作流
-三档，别一律全套跑（流程比改动重就是负担）：
-- **轻**（1–2 个文件 / 修 bug）：动手前用 5 行复述 + 列出不确定点，确认后实现，然后 `/verify`。
-- **中**（单模块新功能）：`/spec` → 实现 → `/verify`。
-- **重**（跨模块 / 动 schema / 碰认证权限 / 新依赖）：`/spec` 走完多轮追问 → 小步实现 → `/verify`。
+三档，别一律全套跑（流程比改动重就是负担）。
+`/spec` 和 `/verify` 都由我手动敲，模型不要自行发起；实现完成后**提醒我跑 `/verify`** 即可。
+- **轻**（1–2 个文件 / 修 bug）：动手前用 5 行复述 + 列出不确定点，确认后实现，然后提醒我 `/verify`。
+- **中**（单模块新功能）：`/spec` → 实现 → 提醒我 `/verify`。
+- **重**（跨模块 / 动 schema / 碰认证权限 / 新依赖）：`/spec` 走完多轮追问 → 小步实现 → 提醒我 `/verify`。
 
 ## 必须停下来问的情况
 不要靠猜，也不要替我做决定。命中任一条就先问：
@@ -104,7 +105,8 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 能自己从代码库查到的事实一律自己查，不要拿能查的东西问我。
 
 ## 验收
-- 机械门禁由 Stop hook 自动执行（`.claude/hooks/gate.sh`：lint + 后端 tsc；有 `*.spec.ts` 后自动加跑测试；`src` / `test` / tsconfig 无改动时跳过）。
+- 机械门禁由 Stop hook 自动执行（`.claude/hooks/gate.sh`：lint + 源码 tsc + 测试 tsc + 单元测试 + e2e，后两者有对应文件时才跑；`src` / `test` / tsconfig 无改动时跳过）。跑 e2e 需要 Postgres，Docker 没起时会拦下。
+- `/verify` 的 L0 用 `GATE_ALWAYS=1` 强制真跑，不受「无改动则跳过」影响 —— 否则先提交再验收会得到假绿。
 - 审查一律派**独立上下文的 `reviewer` 子代理**，只给它 diff 和 spec，**不要先给它我的判断** —— 带着结论去审只会验证结论。
 - 审查发现的新问题，回写进 `.claude/agents/reviewer.md` 的清单，让它越用越准。
 

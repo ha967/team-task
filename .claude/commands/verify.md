@@ -8,8 +8,12 @@ argument-hint: [spec 文件路径，可省略]
 ## L0 机器门禁（先跑，不通过就别往下走）
 
 ```bash
-bash .claude/hooks/gate.sh < /dev/null
+GATE_ALWAYS=1 bash .claude/hooks/gate.sh < /dev/null
 ```
+
+`GATE_ALWAYS=1` 不能省：脚本看到工作区没有 `src`/`test` 改动时会直接放行，
+而「先提交、再验收」是很常见的顺序 —— 不带这个变量就会变成「一条检查没跑，
+却报告门禁通过」的假绿。Stop hook 那条路径才需要那个跳过优化，验收这条不需要。
 
 非 0 退出 → 把报错原文贴出来并停下，不要顺手去改。
 
