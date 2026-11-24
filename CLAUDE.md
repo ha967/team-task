@@ -81,11 +81,12 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 | `test/` | e2e 测试目录 |
 
 ## 已知缺口（改动时留意）
-- 没有 teams / comments 的 controller；团队和评论目前只有 schema + seed 数据。
-- 除默认 e2e 外没有单元测试；`test/app.e2e-spec.ts` 期望 `GET /` 返回 `Hello World!`，与现有代码不符（无 `AppController`）。
+- 没有 comments 的 controller；评论目前只有 schema + seed 数据（`src/comments/` 是空目录）。
+- **没有单元测试**：`src/**/*.spec.ts` 是 0 个文件，`gate.sh` 里的「单元测试」步骤因此永远被跳过（只有 `test/` 下的 e2e 在跑）。写纯函数 / 服务内部逻辑的用例时记得新建 `*.spec.ts`，否则改坏了只能靠 e2e 兜。
 - `src/logger.middeware.ts` 是未接入的示例中间件（文件名拼写如此）。
 - `ObserveModule` 的 appKey / appSecret 仍是占位值。
-- schema 层面待修（详见 `docs/README.md` 的「本项目现有设计的已知问题」）：`users` 的 `username` / `email` 唯一约束与软删冲突，需改成 `WHERE deleted_at IS NULL` 的部分唯一索引；`tasks.priority` 缺 `CHECK` 约束；`Comment.author` 的 `onDelete: Cascade` 会连带删评论。
+- **`users` 的 `username` / `email` 唯一性只存在于迁移 SQL 里**：部分唯一索引 `users_email_active_key` / `users_username_active_key`（`WHERE deleted_at IS NULL`）。`schema.prisma` 里**没有** `@unique`，不要加回去——那会让下一次 `migrate dev` 重建全量唯一索引，把「软删用户占着邮箱」的 bug 带回来。按 email 查用户一律 `findFirst({ where: { email, deletedAt: null } })`，`findUnique` 现在连类型都过不了。
+- schema 层还剩两条**故意不修**的问题（详见 `docs/README.md` 的「本项目现有设计的已知问题」）：`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」（靠 `TeamAccessService` 兜）；`team_members` 没有 `leftAt`——一旦实现成员管理接口（邀请 / 移除 / 退出）必须先补 `leftAt` 再动接口。
 
 ## 开发工作流
 三档，别一律全套跑（流程比改动重就是负担）。

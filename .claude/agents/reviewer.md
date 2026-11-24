@@ -47,6 +47,11 @@ tools: Read, Grep, Glob, Bash
 - 注释与面向用户的错误信息是否是中文。
 - 路由是否挂全局 `/api` 前缀（不需要在 controller 里重复写）。
 
+**库层约束与手写迁移**
+
+- 迁移 SQL 被手工编辑过（部分唯一索引 / `CHECK` / 改 FK 行为这类 Prisma DSL 表达不了的东西），就核对 `_prisma_migrations` 里该迁移的 `checksum` 与 `migration.sql` 文件的 sha256 是否一致——不一致的下一次 `prisma migrate dev` 会要求 reset 开发库。只读查法：`SELECT migration_name, checksum FROM _prisma_migrations` 配合 `sha256sum prisma/migrations/*/migration.sql`；再用 `npx prisma migrate diff --from-config-datasource --to-schema-datamodel prisma/schema.prisma` 确认输出空迁移（无漂移）。
+- 验证库层约束的 e2e 断言要绑**错误码**（`P2002` 唯一冲突、`P2003` 外键违反），不要绑 Prisma 消息里的约束名/字段名：消息渲染取决于 driver adapter 有没有拿到 pg 的 `column_name`（会渲染成 `constraint: xxx` 或 `fields: (xxx)` 两种形态），绑文案的断言随时失效且失效时极难查。
+
 **AI 代码常见病**
 
 - 新增了没人调用的函数 / 用不上的参数 / 预留的「以后可能用」抽象。

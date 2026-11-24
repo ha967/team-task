@@ -1,6 +1,79 @@
-用户可以归属不同的团队，每个团队有不同的任务，可以在任务下评论
-设计表
-用户表 团队表 团队成员表 任务表 评论表
+# 总览
+
+## 项目目的
+
+`team-task` 是一个团队协作任务管理系统，用来把「人 → 团队 → 任务 → 评论」这条主线完整走通：用户可以归属不同的团队，每个团队下有各自的任务，可以在任务下评论讨论。
+
+它同时是一个全栈练手项目：除了业务本身，更看重「一个能长期维护的项目该长什么样」——统一的 `/api` 前缀、默认拒绝的全局守卫、DTO 入参校验、Prisma 显式 `select`、refresh token 轮换、软删除过滤、迁移 + seed 的可复现流程，以及 spec / verify 的开发工作流（见文末「工作流」）。
+
+业务上的几条规则：
+
+- 用户与团队是多对多，`team_members` 关联实体上还带角色：`OWNER` / `ADMIN` / `MEMBER`。创建团队的人自动成为该团队 `OWNER`。
+- 任务属于某个团队，只有团队成员能看到、能操作。改/删的权限按角色分：`OWNER` / `ADMIN` 可动团队内任意任务，`MEMBER` 只能动自己创建的或分配给自己的任务。
+- 任务有状态（`TODO` / `IN_PROGRESS` / `DONE`）、优先级、负责人、预估工时、截止时间。
+- 删除一律是软删除（`deletedAt`），所有查询都带 `deletedAt: null` 过滤。
+
+## 技术栈
+
+**后端**（根目录，NestJS API，端口 `3001`）
+
+| 分类 | 选型 |
+| --- | --- |
+| 框架 | NestJS 12（`@nestjs/platform-express`）+ TypeScript，ESM（`"type": "module"`、`module: nodenext`） |
+| 数据库 | PostgreSQL 17（`compose.yml` 拉 `postgres:17-alpine`） |
+| ORM | Prisma 7 + driver adapter `@prisma/adapter-pg`，client 生成到 `src/generated/prisma/` |
+| 认证 | `@nestjs/jwt` + `bcryptjs`，自建全局 `JwtAuthGuard`（默认拒绝，放行用 `@Public()`） |
+| 校验 | class-validator / class-transformer，全局 `ValidationPipe`（`transform` + `whitelist` + `forbidNonWhitelisted`） |
+| 配置 | `@nestjs/config` + 启动期环境变量校验（`src/config/env.validation.ts`） |
+| 测试 | Vitest 4 + supertest（`*.spec.ts` / `test/*.e2e-spec.ts`） |
+
+**前端**（`web/`，npm workspace，dev 端口 `5173`）
+
+| 分类 | 选型 |
+| --- | --- |
+| 框架 | React 19 + Vite 8，TypeScript |
+| 路由 | react-router-dom 7 |
+| 请求 | 自封装 `shared/api/http.ts`（自动带 Bearer、401 单飞刷新并重试、失败抛 `ApiError`） |
+| 开发联调 | Vite proxy `/api` → `http://localhost:3001`，后端不开 CORS |
+
+**工具链**
+
+| 分类 | 选型 |
+| --- | --- |
+| Lint / 格式化 | oxlint + prettier（`src/`、`test/`；`web/` 需手动跑 prettier） |
+| 开发启动 | `concurrently` 同时起 API + web（`npm run dev`） |
+| 容器 | Docker Compose（只跑 Postgres，数据卷 `pgdata`，带 healthcheck） |
+
+## 设计表
+
+用户表 / 团队表 / 团队成员表 / 任务表 / 评论表——为什么拆 `team_members`、字段怎么定、现有设计还有哪些坑，见下方「表设计与建模规范」。
+
+## 当前进度
+
+已实现：
+
+- 认证：`POST /api/auth/register|login|refresh|logout`；access token 只在内存，refresh token 只存 SHA-256 哈希并轮换，旧令牌复用会撤销该用户全部活跃令牌。
+- 用户：`GET /api/users/me`。
+- 团队：`GET /api/teams`（我参与的）、`GET /api/teams/:teamId`（含成员）、`POST /api/teams`（建团队 + 建者成为 `OWNER`，同一事务）。
+- 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。
+- 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
+- 前端：`/login`、`/register`、`/tasks` 三个页面。
+
+尚未实现（改动时留意）：
+
+- 评论：只有 schema + seed 数据，`src/comments/` 还是空目录，没有 controller / service。
+- 团队成员管理（邀请、改角色、移除）没有接口；团队目前只有列表 / 详情 / 创建。
+- 前端没有团队相关页面，评论自然也没有。
+- schema 层还剩两条故意不修的问题（`tasks.assignee_id` 复合外键、`team_members` 缺 `leftAt`），详见「表设计与建模规范 → 本项目现有设计的已知问题」。
+
+## 文档导航
+
+| 章节 | 内容 |
+| --- | --- |
+| 数据库 / Prisma | Prisma 是什么、schema 三段结构、模型与关系写法、迁移与 generate 流程、seed、Prisma Studio |
+| 表设计与建模规范 | 多对多与关联实体的设计、表设计标准、本项目已知问题 |
+| NestJs | 控制器 / 提供者 / 模块 / 中间件 / 守卫 / 管道 / 拦截器 / 过滤器 |
+| 工作流 | 新增变更与变更兜底（自动门禁 / 手动 `/verify`） |
 
 # 数据库
 
@@ -184,36 +257,44 @@ model TeamMember {
 
 ### 本项目现有设计的已知问题
 
-对着上面的清单体检 `prisma/schema.prisma`，有几处值得后续处理：
+对着上面的清单体检 `prisma/schema.prisma`，有五处值得处理。**1–3 已修**（迁移 `20261124070014_fix_schema_integrity`，spec 见 `docs/specs/schema-integrity-fixes.md`），4–5 明确本轮不修，理由写在各条里。
 
-**1. 软删与唯一约束冲突（真实 bug 级）**
+**1. 软删与唯一约束冲突（已修）**
 
-`User.username` / `User.email` 是 `@unique`，但 `User` 有 `deletedAt` 软删。用户被软删后，邮箱和用户名**仍然占着唯一约束**：新人用同一邮箱注册会撞 `ConflictException`，而 `GET /users` 又看不到那个“已删除”的用户，排查时非常费解。
+原来 `User.username` / `User.email` 是 `@unique`，但 `User` 有 `deletedAt` 软删。用户被软删后，邮箱和用户名**仍然占着唯一约束**：新人用同一邮箱注册会撞 `ConflictException`，而按 `deletedAt: null` 查又查不到那行，排查时非常费解。
 
-正解是 Postgres 的**部分唯一索引**（只对未删除的行生效）：
+修法：改用 Postgres 的**部分唯一索引**（只对未删除的行生效），并把 `@unique` 从 schema 里去掉：
 
 ```sql
 CREATE UNIQUE INDEX users_email_active_key ON users (email) WHERE deleted_at IS NULL;
 CREATE UNIQUE INDEX users_username_active_key ON users (username) WHERE deleted_at IS NULL;
 ```
 
-Prisma schema 目前没法声明部分索引，要写进 migration SQL：`npx prisma migrate dev --name fix_soft_delete_unique --create-only`，编辑生成的 `migration.sql` 后再 `npx prisma migrate dev` 应用。这就是“标准知道在哪，ORM 表达不了就用 SQL 兜底”的典型情况。
+Prisma schema DSL 表达不了带 `WHERE` 的索引，所以写在迁移 SQL 里（`--create-only` 生成后手写，再 `migrate dev` 应用）。这是“标准知道在哪，ORM 表达不了就用 SQL 兜底”的典型情况。
 
-**2. `Task.priority` 没有取值范围约束**
+连带的约定，改动时别踩：
 
-`priority Int @default(2)` 只靠代码保证 1~4，任何直接写库的路径（Studio、psql、脚本）都能写进 99。可在 migration 里加：
+- **`schema.prisma` 不再是唯一性的真相。** 谁把 `@unique` 加回去，下一次 `migrate dev` 就会重建全量唯一索引，把这条 bug 带回来。
+- 查询用户只能用 `findFirst({ where: { email, deletedAt: null } })`；按 email 调 `findUnique` 现在连类型都过不了，而且不带 `deletedAt` 过滤可能查到历史行。
+- 同一个邮箱在库里可能有 N 行（1 行活跃 + 若干已软删），审计上是好事，但任何“按邮箱找人”的代码都必须带过滤。
+
+**2. `Task.priority` 没有取值范围约束（已修）**
+
+取值域是 **0–3**（0 最低 / 3 最高），默认 2；应用层由 `CreateTaskDto` 的 `@Min(0) @Max(3)` 挡。库层原来完全裸奔，任何直接写库的路径（Studio、psql、脚本）都能写进 99。现在补了 CHECK：
 
 ```sql
-ALTER TABLE tasks ADD CONSTRAINT tasks_priority_range CHECK (priority BETWEEN 1 AND 4);
+ALTER TABLE tasks ADD CONSTRAINT tasks_priority_range CHECK (priority BETWEEN 0 AND 3);
 ```
 
-Prisma 对 `CHECK` 的支持同样是“schema 里写不了，迁移里手写”。
+坑提醒：库层违规在 Prisma 里是 `P2010` 之类的原始错误（不是可读的业务异常），这是兜底约束的正常代价——API 路径撞不到它，因为 DTO 先挡住了。
 
-**3. `Comment.author` 用了 `onDelete: Cascade`**
+**3. `Comment.author` 用了 `onDelete: Cascade`（已修）**
 
-删用户会把他的评论连带删掉。通常评论是团队的历史资产，应该保留（改成 `Restrict`，或依赖用户软删 + 用 `SetNull` 并让 `authorId` 可空）。
+删用户会把他的评论连带删掉，而评论是团队的历史资产。已改成 `onDelete: Restrict`：硬删用户直接被外键挡住，与 `teams.created_by` / `tasks.created_by` 的处理一致。
 
-**4. `Task.assigneeId` 无法在库层面保证“被指派人属于该团队”**
+没选 `SetNull` + `authorId` 可空的理由：项目整体走软删，硬删用户本就不该发生；把 `authorId` 变成可空会把“作者已注销”的成本摊给以后所有评论查询。真要做 GDPR 式硬删时再重新评估。
+
+**4. `Task.assigneeId` 无法在库层面保证“被指派人属于该团队”（本轮不修）**
 
 现在靠 `src/teams/team-access.service.ts` 的 `TeamAccessService.assertTeamMember` 兜（tasks 与 teams 共用同一份实现）。库层面可以用**复合外键**做到：
 
@@ -221,11 +302,18 @@ Prisma 对 `CHECK` 的支持同样是“schema 里写不了，迁移里手写”
 FOREIGN KEY (team_id, assignee_id) REFERENCES team_members (team_id, user_id)
 ```
 
-但 `assignee_id` 可空、`team_id` 非空，Prisma 对这种“部分可空”的复合外键支持很差，所以实际仍在应用层校验。知道有这条路，将来遇到“应用层校验不放心”的场景可以用原生 SQL 补。
+不修的理由：`assignee_id` 可空、`team_id` 非空，Prisma 对这种“部分可空”的复合外键支持很差，手写进迁移后每次 `migrate dev` 都可能被冲掉，收益（防住应用层漏校验）小于维护成本。
 
-**5. `team_members` 没有 `deletedAt` / `leftAt`**
+什么条件下才修：出现“除了 NestJS 还有第二个写库入口”（脚本、后台工具、数据导入），或应用层权限校验已经出过一次线上事故。届时用原生 SQL 兜底，并在迁移里加注释说明它绕过了 Prisma。
 
-用户退队或管理员移除成员只能硬删行，团队历史就没了（“这人上个月是不是在这队”答不上来）。两种选择：加 `leftAt` 保留历史，或明确接受“成员关系是一次性事实”——在目前这个阶段，后者够用。
+**5. `team_members` 没有 `deletedAt` / `leftAt`（本轮不修）**
+
+用户退队或管理员移除成员只能硬删行，团队历史就没了（“这人上个月是不是在这队”答不上来）。
+
+不修的理由：目前**没有任何**退队 / 移除成员的接口，加了 `leftAt` 也没有调用方会写它；而“成员关系是一次性事实”在现阶段够用。
+
+什么条件下才修：一旦实现成员管理接口（邀请 / 移除 / 退出），必须同步加 `leftAt`（保留历史）而不是硬删，否则第一版权限审计表就是残的。
+
 
 # NestJs
 
@@ -295,12 +383,15 @@ export class TasksService {}
 ## 模块
 
 @Module注解声明这个类是一个模块，如下:
+
+```ts
 @Module({
-imports: [PrismaModule], // 模块：把别的模块的"能力"接入当前模块.imports 数组中只能是模块（被 @Module() 装饰的类，或者它的动态模块对象），不能放 service、controller 或普通类。
-controllers: [TasksController], // 控制器：路由层
-providers: [TasksService], // 提供者：可被注入的类/工厂/值
-exports: [TasksService], // 导出：允许别的模块注入这些 provider
+  imports: [PrismaModule], // 模块：把别的模块的"能力"接入当前模块.imports 数组中只能是模块（被 @Module() 装饰的类，或者它的动态模块对象），不能放 service、controller 或普通类。
+  controllers: [TasksController], // 控制器：路由层
+  providers: [TasksService], // 提供者：可被注入的类/工厂/值
+  exports: [TasksService], // 导出：允许别的模块注入这些 provider
 })
+```
 
 为什么必须是模块
 Nest 启动时不是简单地"扫描所有类"，而是先构建一棵模块图：
@@ -484,10 +575,18 @@ await app.listen(process.env.PORT ?? 3000);
 
 # 工作流
 
-新增功能或者修改功能是，可以通过/spec command(.claude/commands)来描述改动，会先判断这件事属于哪一档，并会通过不断的追问来完善改动
+## 新增变更
 
-在./claude/settings.json中配置了每次对话结束后都会执行.claude/hooks/gate.sh。
-首先会先判断「工作区脏不脏」（改动提交（或 revert）之后，门禁才会恢复「纯对话轮次跳过」），如果工作区无改动，则直接放行。
+新增功能或者修改功能通过/spec command(.claude/commands)来描述改动，大模型会先判断这件事属于哪一档，并会通过不断的追问来完善改动，避免后续多轮修改或返工。
+
+## 变更兜底
+
+### 自动兜底
+
+在每次生成代码后，会自动执行一次门禁脚本。
+具体配置在./claude/settings.json中，这里是配置了每次对话结束后都会执行.claude/hooks/gate.sh
+逻辑为:
+首先会先判断「工作区脏不脏」（改动提交（或 revert）之后，门禁才会恢复「纯对话轮次跳过」）,如果工作区无改动，则直接放行。
 如果有改动，且改动包含:
 
 - src/
@@ -498,7 +597,9 @@ await app.listen(process.env.PORT ?? 3000);
   那么就会执行触发门禁后续逻辑，进行lint测试（tsc），单元测试（e2e）
   如果上述测试通过，门禁放行，失败则回灌给大模型。
 
-lint测试通过，单元测试通过后，还需要通过/verify command对本次改动进行验证，包含
+### 手动兜底
+
+虽然有门禁帮我验证了lint和单元测试，但是可能还存在一些逻辑漏洞，所以还需要通过/verify command对本次改动进行验证，该命令包含
 L0 → gate.sh 再跑一遍（面向验收）
-L1 → 派 reviewer 看 diff，带 spec 当基准
+L1 → 派子agent reviewer 看 diff，带 spec 当基准
 L2 → 逐条核对 AC 表格
