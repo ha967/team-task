@@ -122,15 +122,18 @@ export class UserService {
   }
 }
 
+// 下面三个纯函数导出，只为让 user.service.spec.ts 能直接单测：
+// 它们不依赖 Prisma 连接，也不进 Nest 容器，export 不会影响 DI。
+
 // 邮箱统一小写存储，避免 Alice@x.com 和 alice@x.com 变成两个账号
-function normalizeEmail(email: string) {
+export function normalizeEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
 // Prisma 7 走 driver adapter 后，唯一冲突的字段信息不在 meta.target 里，
 // 而是在 meta.driverAdapterError.cause.constraint.index（本轮起索引名是
 // users_email_active_key / users_username_active_key）。
-function extractUniqueTargets(
+export function extractUniqueTargets(
   error: Prisma.PrismaClientKnownRequestError,
 ): string[] {
   const meta = error.meta as
@@ -170,7 +173,7 @@ function extractUniqueTargets(
   return fields;
 }
 
-function mapUniqueConflict(error: unknown) {
+export function mapUniqueConflict(error: unknown) {
   if (
     error instanceof Prisma.PrismaClientKnownRequestError &&
     error.code === 'P2002'

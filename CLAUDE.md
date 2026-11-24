@@ -82,7 +82,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 
 ## 已知缺口（改动时留意）
 - 没有 comments 的 controller；评论目前只有 schema + seed 数据（`src/comments/` 是空目录）。
-- **没有单元测试**：`src/**/*.spec.ts` 是 0 个文件，`gate.sh` 里的「单元测试」步骤因此永远被跳过（只有 `test/` 下的 e2e 在跑）。写纯函数 / 服务内部逻辑的用例时记得新建 `*.spec.ts`，否则改坏了只能靠 e2e 兜。
+- **单元测试只有一处**：`src/user/user.service.spec.ts`（`normalizeEmail` / `extractUniqueTargets` / `mapUniqueConflict` 三个纯函数，不需要数据库）。`tasks.service.ts` 的角色判定、`team-access.service.ts` 的成员校验仍只有 e2e 覆盖 —— 改这类纯逻辑时优先补 `*.spec.ts`，别只靠 e2e 撞。
 - `src/logger.middeware.ts` 是未接入的示例中间件（文件名拼写如此）。
 - `ObserveModule` 的 appKey / appSecret 仍是占位值。
 - **`users` 的 `username` / `email` 唯一性只存在于迁移 SQL 里**：部分唯一索引 `users_email_active_key` / `users_username_active_key`（`WHERE deleted_at IS NULL`）。`schema.prisma` 里**没有** `@unique`，不要加回去——那会让下一次 `migrate dev` 重建全量唯一索引，把「软删用户占着邮箱」的 bug 带回来。按 email 查用户一律 `findFirst({ where: { email, deletedAt: null } })`，`findUnique` 现在连类型都过不了。
