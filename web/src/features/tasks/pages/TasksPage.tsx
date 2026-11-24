@@ -1,13 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
 import { tasksApi } from '../api';
-import type { Task, TaskStatus } from '../types';
-
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  TODO: '待办',
-  IN_PROGRESS: '进行中',
-  DONE: '已完成',
-};
+import { PRIORITY_LABELS, STATUS_LABELS, formatDate } from '../constants';
+import type { Task } from '../types';
 
 export function TasksPage() {
   const { user, logout } = useAuth();
@@ -48,15 +44,20 @@ export function TasksPage() {
           <h1>任务看板</h1>
           <p className="muted">当前用户：{user?.username}</p>
         </div>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() => {
-            void logout();
-          }}
-        >
-          退出登录
-        </button>
+        <div className="actions">
+          <Link to="/tasks/new" className="button">
+            新建任务
+          </Link>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => {
+              void logout();
+            }}
+          >
+            退出登录
+          </button>
+        </div>
       </header>
 
       {loading ? <p className="muted">加载中…</p> : null}
@@ -75,15 +76,20 @@ export function TasksPage() {
               <span className={`badge badge-${task.status.toLowerCase()}`}>
                 {STATUS_LABELS[task.status]}
               </span>
-              <span className="muted">优先级 {task.priority}</span>
+              <span className="muted">
+                优先级 {PRIORITY_LABELS[task.priority] ?? task.priority}
+              </span>
             </div>
 
-            <h2>{task.title}</h2>
+            <h2>
+              <Link to={`/tasks/${task.id}`}>{task.title}</Link>
+            </h2>
             {task.description ? <p>{task.description}</p> : null}
 
             <footer className="muted">
               {task.assignee ? `负责人：${task.assignee.username}` : '未分配'}
-              {` · 创建于 ${new Date(task.createdAt).toLocaleDateString()}`}
+              {` · 创建于 ${formatDate(task.createdAt)}`}
+              {task.dueAt ? ` · 截止 ${formatDate(task.dueAt)}` : ''}
             </footer>
           </li>
         ))}

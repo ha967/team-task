@@ -23,7 +23,9 @@ tools: Read, Grep, Glob, Bash
 
 ## 项目约定清单（team-task）
 
-**数据与安全**
+下面的「数据与安全」「入参与错误处理」「库层约束与手写迁移」偏后端（`src/` / `prisma/`）；「前端（web/）」一节单独列出，不要与前两者混用。
+
+**数据与安全（后端）**
 
 - Prisma 查询是否显式 `select`？有没有把 `passwordHash`、`createdById`、`deletedAt` 等内部字段透给前端？
 - 软删除过滤 `deletedAt: null` 是否漏？列表、详情、关联查询都查一遍。
@@ -41,6 +43,13 @@ tools: Read, Grep, Glob, Bash
 - `:id` 类参数是否用 `ParseUUIDPipe`（否则非法 UUID 会被 Prisma 抛成 500）。
 - 业务异常是否用 Nest 内置异常类（`NotFoundException` / `ForbiddenException` / `ConflictException`），有没有手写 `res.status()`。
 - 有没有把 `undefined` 当成「不改这个字段」和「清空这个字段」混用（Prisma `update` 里 `null` 与 `undefined` 语义不同）。
+
+**前端（web/）**
+
+`web/` 不在 `.claude/hooks/gate.sh` 的覆盖范围内（只有 `tsc --noEmit` 与人工点验兜着），所以下面这几类问题不会被任何自动门禁拦住，必须逐条人眼核。
+
+- **`<input required>` 当唯一校验 = 没校验**：浏览器只拦「空字符串」，`"   "`、格式错、超范围全都会漏到后端；而本项目 `ValidationPipe` 没有 `exceptionFactory`（全仓只有 `auth/dto/register.dto.ts` 一处自定义中文 message），漏网的校验会以 class-validator 英文原文经 `shared/api/http.ts` 的 `extractMessage` 原样渲染给用户。凡是表单里 `trim()` / 转数字 / 做拼接的字段，都要问一句：转换之后变成空值的输入会怎样？
+- **state 与选项列表不同步**：依赖「某个选项存在」才成立的 state（负责人 id、团队 id、枚举值）在选项集变化时必须复位。典型病灶：切成另一批选项后 `<select value={旧值}>` 找不到匹配 `option`，浏览器渲染成空白 —— 用户看到的是「没选」，提交的却是旧值，后端回一句完全对不上的错误（例如「你不是该团队成员」）。复现路径常被单账号走查掩盖：要拿「属于多个团队」的账号（seed 里的 bob）才能踩到。
 
 **风格与结构**
 

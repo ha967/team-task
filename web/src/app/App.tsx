@@ -3,6 +3,9 @@ import { AuthProvider } from '../features/auth/AuthContext';
 import { ProtectedRoute } from '../features/auth/components/ProtectedRoute';
 import { LoginPage } from '../features/auth/pages/LoginPage';
 import { RegisterPage } from '../features/auth/pages/RegisterPage';
+import { TaskCreatePage } from '../features/tasks/pages/TaskCreatePage';
+import { TaskDetailPage } from '../features/tasks/pages/TaskDetailPage';
+import { TaskEditPage } from '../features/tasks/pages/TaskEditPage';
 import { TasksPage } from '../features/tasks/pages/TasksPage';
 
 export function App() {
@@ -14,6 +17,11 @@ export function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route path="/tasks" element={<TasksPage />} />
+          {/* /tasks/new 与 /tasks/:taskId 不冲突：react-router 按「静态段优先」打分匹配，
+              这里把静态段写在前面只是读起来顺，不是匹配的前提 */}
+          <Route path="/tasks/new" element={<TaskCreatePage />} />
+          <Route path="/tasks/:taskId" element={<TaskDetailPage />} />
+          <Route path="/tasks/:taskId/edit" element={<TaskEditPage />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/tasks" replace />} />
