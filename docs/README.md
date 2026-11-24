@@ -55,7 +55,7 @@
 - 认证：`POST /api/auth/register|login|refresh|logout`；access token 只在内存，refresh token 只存 SHA-256 哈希并轮换，旧令牌复用会撤销该用户全部活跃令牌。
 - 用户：`GET /api/users/me`。
 - 团队：`GET /api/teams`（我参与的）、`GET /api/teams/:teamId`（含成员）、`POST /api/teams`（建团队 + 建者成为 `OWNER`，同一事务）。
-- 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。
+- 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`GET /api/tasks/:taskId`（详情，比列表多带 `createdBy` / `team`）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。
 - 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
 - 前端：`/login`、`/register`、`/tasks` 三个页面。
 
@@ -64,6 +64,7 @@
 - 评论：只有 schema + seed 数据，`src/comments/` 还是空目录，没有 controller / service。
 - 团队成员管理（邀请、改角色、移除）没有接口；团队目前只有列表 / 详情 / 创建。
 - 前端没有团队相关页面，评论自然也没有。
+- **写路径没有过滤团队软删**：`GET /api/tasks/:taskId` 会因为 `team.deletedAt` 返回 404，但 `PATCH` / `DELETE` 走的 `getTaskOrThrow` 仍只有 `{ id, deletedAt: null }` —— 团队被软删后，知道 id 仍能改 / 删该任务。读路径已在「任务详情」那一轮补上，写路径留待下一轮统一（见 `docs/specs/task-detail.md` 的「已知取舍」）。
 - schema 层还剩两条故意不修的问题（`tasks.assignee_id` 复合外键、`team_members` 缺 `leftAt`），详见「表设计与建模规范 → 本项目现有设计的已知问题」。
 
 ## 文档导航

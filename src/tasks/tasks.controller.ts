@@ -27,6 +27,15 @@ export class TasksController {
     return this.tasksService.getTasks(query, userId);
   }
 
+  // 单任务详情。与 PATCH / DELETE 同层级，不另开 /teams/:teamId/tasks/:taskId 第二种查法
+  @Get(':taskId')
+  getTaskDetail(
+    @Param('taskId', ParseUUIDPipe) taskId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.tasksService.getTaskDetail(taskId, userId);
+  }
+
   @Post()
   addTask(@CurrentUser('sub') userId: string, @Body() body: CreateTaskDto) {
     return this.tasksService.addTask(userId, body);

@@ -10,7 +10,9 @@ import { CreateTaskDto } from './dto/create-task.dto.js';
 import { ListTasksQueryDto } from './dto/list-tasks-query.dto.js';
 import { UpdateTaskDto } from './dto/update-task.dto.js';
 
-// 列表和详情统一返回这些字段，避免把内部字段（如 createdById）透给前端
+// 列表 / 创建 / 更新 / 删除共用的字段白名单，避免把内部字段（如 createdById）透给前端。
+// 详情不用它 —— 详情另走下面的 TASK_DETAIL_SELECT（多带 createdBy / team），
+// 往这里加字段等于同时改那四个接口的返回体。
 const TASK_SELECT = {
   id: true,
   teamId: true,
@@ -25,6 +27,17 @@ const TASK_SELECT = {
   createdAt: true,
   updatedAt: true,
   assignee: { select: { id: true, username: true } },
+} satisfies Prisma.TaskSelect;
+
+// 详情比列表多带「谁创建的」和「属于哪个团队」，供任务详情页直接展示。
+// 注意不能直接往 TASK_SELECT 上加：它被列表 / 创建 / 更新 / 删除四处共用，
+// 改它会静默改变那四个接口的返回体（test/tasks.e2e-spec.ts 有键集合断言兜着）。
+const TASK_DETAIL_SELECT = {
+  ...TASK_SELECT,
+  // createdById 是内部字段，只透用户名；与 assignee 一致，不过滤 createdBy.deletedAt
+  //（用户软删后创建者仍显示用户名，取舍见 docs/specs/task-detail.md）
+  createdBy: { select: { id: true, username: true } },
+  team: { select: { id: true, name: true } },
 } satisfies Prisma.TaskSelect;
 
 @Injectable()
@@ -167,6 +180,28 @@ export class TasksService {
     ]);
 
     return { items, total, page: query.page, pageSize: query.pageSize };
+  }
+
+  /**
+   * 单任务详情。该任务所属团队的任意成员都能读，与列表语义一致
+   * （列表本来就把团队全部任务给到每个成员，详情更严会造出「列表里有、点进去 403」）。
+   */
+  async getTaskDetail(taskId: string, userId: string) {
+    // 一次查询同时拿到任务、创建人、团队；软删任务、以及软删团队下的任务都视为不存在，
+    // 与列表的 team: { deletedAt: null } 过滤对齐，否则会出现「列表里查不到、知道 id 却能打开」的幽灵任务
+    const task = await this.prismaService.task.findFirst({
+      where: { id: taskId, deletedAt: null, team: { deletedAt: null } },
+      select: TASK_DETAIL_SELECT,
+    });
+
+    // 先判存在性再判成员身份：反过来会把「任务不存在」误报成「你不是该团队成员」
+    if (!task) {
+      throw new NotFoundException('任务不存在');
+    }
+
+    await this.teamAccess.assertTeamMember(task.teamId, userId);
+
+    return task;
   }
 
   private async getTaskOrThrow(taskId: string) {
