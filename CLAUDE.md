@@ -113,3 +113,5 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 
 ## 提交规范
 - 目前直接在 `main` 上开发；commit message 形如 `feat: 中文描述`（Conventional Commits 前缀 + 中文短语）。
+- **不要自行提交**：改完把改动留在工作区，先给出 `git status --short` + `git diff --stat` + 改动说明（关键片段 + 为什么这么改），等我看过 diff、明确说「提交」再 commit。提交信息也要先拟好给我看。
+- 只有我明确说了「提交」「拆成 N 个提交」这类指令才执行 `git add` / `git commit`；「改完/做完/可以了」不算授权。
