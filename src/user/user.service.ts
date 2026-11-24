@@ -84,14 +84,15 @@ export class UserService {
     const email = normalizeEmail(data.email);
 
     // 先查一次是为了给出字段级提示；并发场景由下面的唯一约束兜底。
-    // 注意这里不过滤 deletedAt：唯一索引包含已软删除的行，过滤了反而和数据库不一致
+    // 这里必须过滤 deletedAt：唯一性由迁移里的部分唯一索引（WHERE deleted_at IS NULL）保证，
+    // 已软删用户占着的邮箱/用户名是可被重新注册的，查重不过滤就会把老账号误判成「已存在」。
     const [emailTaken, usernameTaken] = await Promise.all([
       this.prismaService.user.findFirst({
-        where: { email },
+        where: { email, deletedAt: null },
         select: { id: true },
       }),
       this.prismaService.user.findFirst({
-        where: { username: data.username },
+        where: { username: data.username, deletedAt: null },
         select: { id: true },
       }),
     ]);
@@ -127,7 +128,8 @@ function normalizeEmail(email: string) {
 }
 
 // Prisma 7 走 driver adapter 后，唯一冲突的字段信息不在 meta.target 里，
-// 而是在 meta.driverAdapterError.cause.constraint.index（如 users_email_key）
+// 而是在 meta.driverAdapterError.cause.constraint.index（本轮起索引名是
+// users_email_active_key / users_username_active_key）。
 function extractUniqueTargets(
   error: Prisma.PrismaClientKnownRequestError,
 ): string[] {
@@ -137,7 +139,6 @@ function extractUniqueTargets(
         driverAdapterError?: {
           cause?: {
             constraint?: { index?: string };
-            originalMessage?: string;
           };
         };
       }
@@ -153,17 +154,16 @@ function extractUniqueTargets(
     return [target];
   }
 
-  const cause = meta?.driverAdapterError?.cause;
-  const hint = `${cause?.constraint?.index ?? ''} ${
-    cause?.originalMessage ?? ''
-  }`;
+  // 只按索引名判断字段，绝不拼 originalMessage —— 后者含冲突的「值」
+  // （形如 Key (username)=(my_email_1)），值里出现 email / username 字样就会误判字段。
+  const indexName = meta?.driverAdapterError?.cause?.constraint?.index ?? '';
   const fields: string[] = [];
 
-  if (hint.includes('email')) {
+  if (indexName.includes('users_email_active_key')) {
     fields.push('email');
   }
 
-  if (hint.includes('username')) {
+  if (indexName.includes('users_username_active_key')) {
     fields.push('username');
   }
 

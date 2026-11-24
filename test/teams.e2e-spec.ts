@@ -66,12 +66,14 @@ describe('团队模块 (e2e)', () => {
         where: { name: SEED_TEAM_NAMES.mobile, deletedAt: null },
         select: { id: true },
       }),
-      prisma.user.findUnique({
-        where: { email: SEED_EMAILS.alice },
+      // User.email 不是唯一字段（唯一性由部分唯一索引保证，见 schema-integrity-fixes），
+      // 所以按 email 查只能用 findFirst
+      prisma.user.findFirst({
+        where: { email: SEED_EMAILS.alice, deletedAt: null },
         select: { id: true },
       }),
-      prisma.user.findUnique({
-        where: { email: SEED_EMAILS.bob },
+      prisma.user.findFirst({
+        where: { email: SEED_EMAILS.bob, deletedAt: null },
         select: { id: true },
       }),
     ]);

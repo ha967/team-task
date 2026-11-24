@@ -35,8 +35,15 @@ enum TaskStatus {
 
 model User {
   id           String    @id @default(uuid()) @db.Uuid
-  username     String    @unique @db.VarChar(32)
-  email        String    @unique @db.VarChar(255)
+  // username / email 的唯一性由迁移里的「部分唯一索引」保证，只对 deleted_at IS NULL 的行生效：
+  //   users_username_active_key ON users (username) WHERE deleted_at IS NULL
+  //   users_email_active_key    ON users (email)    WHERE deleted_at IS NULL
+  // Prisma schema DSL 表达不了带 WHERE 的索引，所以这里不能写 @unique ——
+  // 一旦写回来，下一次 migrate dev 就会重建全量唯一索引，把软删用户占着邮箱的 bug 带回来。
+  // 另外索引是大小写敏感的：email 必须由写入方统一转小写（UserService 的 normalizeEmail），
+  // 否则 Alice@x.com 与 alice@x.com 会成为两个都算「活跃」的账号。
+  username     String    @db.VarChar(32)
+  email        String    @db.VarChar(255)
   passwordHash String    @map("password_hash") @db.VarChar(255)
   avatarUrl    String?   @map("avatar_url")
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -45,9 +52,9 @@ model User {
 
   // 反向关系字段（下面这些不是数据库列，而是 Prisma 用来导航关系的“虚拟字段”）
   memberships   TeamMember[]
-  createdTeams  Team[]       @relation("TeamCreator")
-  createdTasks  Task[]       @relation("TaskCreator")
-  assignedTasks Task[]       @relation("TaskAssignee")
+  createdTeams  Team[]         @relation("TeamCreator")
+  createdTasks  Task[]         @relation("TaskCreator")
+  assignedTasks Task[]         @relation("TaskAssignee")
   comments      Comment[]
   refreshTokens RefreshToken[]
 
@@ -121,7 +128,10 @@ model Comment {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
   task   Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  // 评论是团队的历史资产：删用户不许连带删评论。项目整体走软删，硬删用户本就不该发生，
+  // 所以用 Restrict 直接挡住（与 teams.created_by / tasks.created_by 一致），
+  // 而不是 SetNull + authorId 可空（那会让之后所有评论查询都要处理「作者已注销」）。
+  author User @relation(fields: [authorId], references: [id], onDelete: Restrict)
 
   @@index([taskId, createdAt])
   @@map("comments")
