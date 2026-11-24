@@ -110,7 +110,7 @@
 | `src/tasks/tasks.service.ts` | Edit | 新增 `TASK_DETAIL_SELECT` 与 `getTaskDetail(taskId, userId)`：查 `id + deletedAt: null + team.deletedAt: null` → 404；再 `assertTeamMember` → 403；返回任务 |
 | `src/tasks/tasks.controller.ts` | Edit | 新增 `@Get(':taskId')` handler，`@Param('taskId', ParseUUIDPipe)` + `@CurrentUser('sub')` |
 | `test/tasks.e2e-spec.ts` | Edit | ① 新增 `TASK_LIST_KEYS` 常量 + `expectExactKeys(body, keys)` helper；② 用它在列表 item（逐条）/ `POST` / `PATCH` / `DELETE` 四处钉住返回体键集合（AC14–AC17）；③ 新增任务详情用例（AC1–AC13、AC18，TD9 补 `assignee: null` 分支）；自建数据在 `afterAll` 清理，复用现有 `createdTaskIds` |
-| `docs/README.md` | Edit | 「当前进度 → 已实现」的任务一行补上 `GET /api/tasks/:taskId` |
+| `README.md` | Edit | 「当前进度 → 已实现」的任务一行补上 `GET /api/tasks/:taskId` |
 
 不新增 DTO 文件（无请求体、无 query）、不新增 module、不动 `app.module.ts`。
 

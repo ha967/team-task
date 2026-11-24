@@ -4,7 +4,7 @@
 
 ## 背景
 
-`docs/README.md`「本项目现有设计的已知问题」里列了 5 条，其中 3 条是库层能修的真问题：
+`README.md`「本项目现有设计的已知问题」里列了 5 条，其中 3 条是库层能修的真问题：
 
 1. **软删 × 唯一约束冲突**：`User.email` / `User.username` 是 `@unique`，但 `User` 有 `deletedAt`。用户被软删后邮箱仍占着唯一约束，新人用同一邮箱注册会撞 `ConflictException`，而 `findByEmail` 又过滤了 `deletedAt: null`，排查时看不到任何一行——「库里没有这个人，但系统说已经存在」。
 2. **`Task.priority` 没有取值约束**：`SmallInt DEFAULT 2` 裸露在库层，任何绕过 API 的写法（Studio / psql / 脚本）都能写进 99。
@@ -63,7 +63,7 @@
 
 - [ ] AC21：所有新增/改动的用户可见错误信息是中文，可直接呈现（不出现 `PrismaClientKnownRequestError`、`tasks_priority_range` 之类的库内文案）。
 - [ ] AC22：`git diff` 里没有「不在范围内」一节列出的东西——特别是 `src/comments/` 仍为空目录、`web/` 零改动、没有新增接口路由。
-- [ ] AC23：`docs/README.md` 的「本项目现有设计的已知问题」：问题 1–3 标为已修并写清修法（部分唯一索引 + CHECK + RESTRICT 各自一句话）；`priority` 的描述从「1~4」改成「0~3」；问题 4、5 补上「本轮不修的理由 + 将来什么条件下才修」。
+- [ ] AC23：`README.md` 的「本项目现有设计的已知问题」：问题 1–3 标为已修并写清修法（部分唯一索引 + CHECK + RESTRICT 各自一句话）；`priority` 的描述从「1~4」改成「0~3」；问题 4、5 补上「本轮不修的理由 + 将来什么条件下才修」。
 - [ ] AC24：`CLAUDE.md`「已知缺口」里两条过时项已清理或改写（`test/app.e2e-spec.ts` 的 `Hello World!` 断言已不存在；`users` 唯一约束与软删冲突已修），**且「没有单元测试」这条仍然成立的事实必须保留**（`src/**/*.spec.ts` 仍为 0 个文件，`gate.sh` 的单元测试步骤永远跳过），并新增一条提醒：**邮箱/用户名唯一性只存在于迁移 SQL 里，schema 不再声明 `@unique`，不要手滑加回去**。
 - [ ] AC25：`src/user/user.service.ts` 里那条「注意这里不过滤 deletedAt：唯一索引包含已软删的行」的注释已改成与新语义一致的说明，代码与注释不再互相矛盾。
 
@@ -105,7 +105,7 @@
 | `src/user/user.service.ts` | Edit | 两处查重加 `deletedAt: null`；改写第 87 行那条已反向的注释；确认 `extractUniqueTargets` 对新索引名（含 `email` / `username`）仍能识别字段 |
 | `test/schema-integrity.e2e-spec.ts` | New | AC9–AC19，用 `createTestApp` + `PrismaService`，用例自建自清 |
 | `test/teams.e2e-spec.ts` | Edit | 实现时才发现：里面两处 `user.findUnique({ where: { email } })` 在去掉 `@unique` 后无法通过类型检查（AC8），改成 `findFirst({ where: { email, deletedAt: null } })`；断言不变 |
-| `docs/README.md` | Edit | 「本项目现有设计的已知问题」：1–3 标已修，`priority` 改 0~3，4/5 补「不修的理由」 |
+| `README.md` | Edit | 「本项目现有设计的已知问题」：1–3 标已修，`priority` 改 0~3，4/5 补「不修的理由」 |
 | `CLAUDE.md` | Edit | 清理「已知缺口」里的两条过时项，新增「唯一性只在迁移里」的提醒 |
 | `src/generated/prisma/` | 重新生成 | `npx prisma generate` 的产物，已 gitignore，不纳入 diff |
 

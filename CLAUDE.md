@@ -51,7 +51,7 @@ npm run test:e2e       # vitest run -c vitest.config.e2e.ts
 npx prisma migrate dev --name add_xxx   # 改完 schema 后
 npx prisma generate                     # 迁移后重新生成 client
 npx prisma db seed                      # tsx prisma/seed.ts（alice/bob/carol，密码 Password123!）
-npx prisma studio                      # 图形化查看数据，默认 http://localhost:5555（详见 docs/README.md）
+npx prisma studio                      # 图形化查看数据，默认 http://localhost:5555（详见 README.md）
 ```
 
 ## 数据库
@@ -73,7 +73,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 | `src/common/` | `@Public()`、`@CurrentUser()`、`JwtPayload` 类型 |
 | `prisma/` | schema、migrations、seed |
 | `web/src/` | React 前端（`app/` 路由、`features/`、`shared/`） |
-| `docs/README.md` | 中文学习笔记（Nest / Prisma 基础概念） |
+| `README.md` | 项目总览 + 中文学习笔记（Nest / Prisma 基础概念） |
 | `docs/specs/` | 每轮开发的 spec（`_template.md` 为模板） |
 | `.claude/commands/` | `/spec`、`/verify` 两个工作流命令 |
 | `.claude/agents/` | `reviewer` 独立审查者（只读） |
@@ -86,7 +86,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 - `src/logger.middeware.ts` 是未接入的示例中间件（文件名拼写如此）。
 - `ObserveModule` 的 appKey / appSecret 仍是占位值。
 - **`users` 的 `username` / `email` 唯一性只存在于迁移 SQL 里**：部分唯一索引 `users_email_active_key` / `users_username_active_key`（`WHERE deleted_at IS NULL`）。`schema.prisma` 里**没有** `@unique`，不要加回去——那会让下一次 `migrate dev` 重建全量唯一索引，把「软删用户占着邮箱」的 bug 带回来。按 email 查用户一律 `findFirst({ where: { email, deletedAt: null } })`，`findUnique` 现在连类型都过不了。
-- schema 层还剩两条**故意不修**的问题（详见 `docs/README.md` 的「本项目现有设计的已知问题」）：`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」（靠 `TeamAccessService` 兜）；`team_members` 没有 `leftAt`——一旦实现成员管理接口（邀请 / 移除 / 退出）必须先补 `leftAt` 再动接口。
+- schema 层还剩两条**故意不修**的问题（详见 `README.md` 的「本项目现有设计的已知问题」）：`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」（靠 `TeamAccessService` 兜）；`team_members` 没有 `leftAt`——一旦实现成员管理接口（邀请 / 移除 / 退出）必须先补 `leftAt` 再动接口。
 
 ## 开发工作流
 三档，别一律全套跑（流程比改动重就是负担）。
