@@ -40,6 +40,16 @@ const TASK_DETAIL_SELECT = {
   team: { select: { id: true, name: true } },
 } satisfies Prisma.TaskSelect;
 
+// 「这条任务算不算存在」的唯一判定：任务本身未软删，且所属团队未软删。
+//
+// 列表 / 详情 / 更新 / 删除 四处共用这一份。分开各写一遍的后果是「读路径 404、
+// 写路径仍能改」—— 团队软删不删 team_members 行，assertTeamMember 照样通过，
+// 于是知道 id 就能 PATCH / DELETE 一个在界面上已经消失的任务。
+const TASK_ALIVE_FILTER = {
+  deletedAt: null,
+  team: { deletedAt: null },
+} satisfies Prisma.TaskWhereInput;
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -159,11 +169,9 @@ export class TasksService {
 
   async getTasks(query: ListTasksQueryDto, userId: string) {
     const where = {
-      deletedAt: null,
-      team: {
-        deletedAt: null,
-        members: { some: { userId } },
-      },
+      // 用 AND 组合，而不是「展开后再整个覆盖 team」：Prisma 会合并 AND 里的关系条件，
+      // 少写一个键也只是多一条约束、不会静默丢掉 TASK_ALIVE_FILTER 里的 team.deletedAt
+      AND: [TASK_ALIVE_FILTER, { team: { members: { some: { userId } } } }],
       ...(query.status ? { status: query.status } : {}),
       ...(query.assigneeId ? { assigneeId: query.assigneeId } : {}),
     };
@@ -187,10 +195,10 @@ export class TasksService {
    * （列表本来就把团队全部任务给到每个成员，详情更严会造出「列表里有、点进去 403」）。
    */
   async getTaskDetail(taskId: string, userId: string) {
-    // 一次查询同时拿到任务、创建人、团队；软删任务、以及软删团队下的任务都视为不存在，
-    // 与列表的 team: { deletedAt: null } 过滤对齐，否则会出现「列表里查不到、知道 id 却能打开」的幽灵任务
+    // 一次查询同时拿到任务、创建人、团队；存在性判定统一走 TASK_ALIVE_FILTER，
+    // 与列表、以及下面的更新 / 删除路径保持同一个「任务算不算存在」的定义
     const task = await this.prismaService.task.findFirst({
-      where: { id: taskId, deletedAt: null, team: { deletedAt: null } },
+      where: { id: taskId, ...TASK_ALIVE_FILTER },
       select: TASK_DETAIL_SELECT,
     });
 
@@ -204,9 +212,11 @@ export class TasksService {
     return task;
   }
 
+  // 更新 / 删除的入口。存在性判定与详情、列表共用 TASK_ALIVE_FILTER：
+  // 团队被软删后，知道 id 也改不动 / 删不掉这条任务，与 GET /tasks/:taskId 的 404 一致
   private async getTaskOrThrow(taskId: string) {
     const task = await this.prismaService.task.findFirst({
-      where: { id: taskId, deletedAt: null },
+      where: { id: taskId, ...TASK_ALIVE_FILTER },
       select: {
         id: true,
         teamId: true,

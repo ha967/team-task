@@ -42,7 +42,10 @@ function expectExactKeys(body: unknown, keys: readonly string[]) {
  * tasks 的回归基线 + 任务详情。
  *
  * TB1–TB3 是抽出 TeamAccessService 时留下的回归保护，改动前跑绿、改动后仍必须绿；
- * TB4–TB5 钉住更新 / 删除的返回体键集合，TD* 覆盖 GET /api/tasks/:taskId。
+ * TB4–TB5 钉住更新 / 删除的返回体键集合；
+ * TD1–TD9 覆盖 GET /api/tasks/:taskId（读路径）；
+ * TE1–TE3 覆盖「团队被软删」下的读 / 写路径 —— 列表、详情、PATCH、DELETE 四处对同一个
+ * 已软删团队必须给出同一个结论（那条任务不存在）。
  *
  * 数量断言刻意不用精确总数：e2e 会往库里写数据，重跑会累积，只断言「包含 / 不包含」。
  * 但「字段集合」是精确断言（expectExactKeys）—— 两件事不要混，不要因为前半句就以为本轮没加硬断言。
@@ -229,7 +232,10 @@ describe('Tasks 回归基线 (e2e)', () => {
       expect(raw).not.toContain('passwordHash');
 
       expect(Object.keys(res.body.assignee).sort()).toEqual(['id', 'username']);
-      expect(Object.keys(res.body.createdBy).sort()).toEqual(['id', 'username']);
+      expect(Object.keys(res.body.createdBy).sort()).toEqual([
+        'id',
+        'username',
+      ]);
       expect(Object.keys(res.body.team).sort()).toEqual(['id', 'name']);
       expect(res.body.team).toEqual({
         id: res.body.teamId,
@@ -387,6 +393,150 @@ describe('Tasks 回归基线 (e2e)', () => {
       expect(res.body.assigneeId).toBeNull();
       expect(res.body.assignee).toBeNull();
       expect(typeof res.body.createdBy.username).toBe('string');
+    });
+  });
+
+  describe('软删团队后的读写路径', () => {
+    // helper 中途失败时（比如建任务那步 500），已经建好的团队仍要能被 finally 清掉，
+    // 所以 id 记在调用方持有的 refs 里，而不是藏在 helper 的局部变量里
+    interface CreatedRefs {
+      teamId?: string;
+      taskId?: string;
+    }
+
+    /**
+     * 自建一个团队 + 一条任务，返回两者的 id，并把它们记进 refs 供清理。
+     *
+     * 团队软删不删 team_members 行，所以 assertTeamMember 仍会通过 —— 这些用例验的是
+     * 「存在性判定」有没有挡住读 / 写，而不是成员关系兜不兜得住。
+     */
+    async function createTaskInTeam(
+      refs: CreatedRefs,
+    ): Promise<{ teamId: string; taskId: string }> {
+      const team = await request(app.getHttpServer())
+        .post('/api/teams')
+        .set('Authorization', `Bearer ${aliceToken}`)
+        .send({ name: `e2e 软删团队 ${Date.now()}` })
+        .expect(201);
+
+      const teamId = team.body.id as string;
+      refs.teamId = teamId;
+
+      const task = await request(app.getHttpServer())
+        .post('/api/tasks')
+        .set('Authorization', `Bearer ${aliceToken}`)
+        .send({ teamId, title: 'e2e 软删团队下的任务' })
+        .expect(201);
+
+      const taskId = task.body.id as string;
+      refs.taskId = taskId;
+
+      return { teamId, taskId };
+    }
+
+    // 级联只发生在硬删，这里软删必须只动 teams.deleted_at
+    async function softDeleteTeam(teamId: string) {
+      await prisma.team.update({
+        where: { id: teamId },
+        data: { deletedAt: new Date() },
+      });
+    }
+
+    async function cleanup(refs: CreatedRefs) {
+      if (refs.taskId) {
+        await prisma.task.deleteMany({ where: { id: refs.taskId } });
+      }
+
+      if (refs.teamId) {
+        // team_members 对 team 是 onDelete: Cascade，删团队会连带清掉成员关系
+        await prisma.team.deleteMany({ where: { id: refs.teamId } });
+      }
+    }
+
+    it('TE1 团队被软删后 PATCH 返回 404（与详情一致）', async () => {
+      const refs: CreatedRefs = {};
+
+      try {
+        const { teamId, taskId } = await createTaskInTeam(refs);
+        await softDeleteTeam(teamId);
+
+        const res = await request(app.getHttpServer())
+          .patch(`/api/tasks/${taskId}`)
+          .set('Authorization', `Bearer ${aliceToken}`)
+          .send({ title: '不该改成功的标题' })
+          .expect(404);
+
+        expect(res.body.message).toBe('任务不存在');
+
+        // 确认真的没写进去：绕过接口直接看库，唯一的过滤只能来自写路径
+        const row = await prisma.task.findUnique({
+          where: { id: taskId },
+          select: { title: true },
+        });
+
+        expect(row?.title).toBe('e2e 软删团队下的任务');
+      } finally {
+        await cleanup(refs);
+      }
+    });
+
+    it('TE2 团队被软删后 DELETE 返回 404（与详情一致）', async () => {
+      const refs: CreatedRefs = {};
+
+      try {
+        const { teamId, taskId } = await createTaskInTeam(refs);
+        await softDeleteTeam(teamId);
+
+        const res = await request(app.getHttpServer())
+          .delete(`/api/tasks/${taskId}`)
+          .set('Authorization', `Bearer ${aliceToken}`)
+          .expect(404);
+
+        expect(res.body.message).toBe('任务不存在');
+
+        // 不能被软删：deletedAt 必须仍是 null
+        const row = await prisma.task.findUnique({
+          where: { id: taskId },
+          select: { deletedAt: true },
+        });
+
+        expect(row?.deletedAt).toBeNull();
+      } finally {
+        await cleanup(refs);
+      }
+    });
+
+    it('TE3 团队被软删后其任务不出现在列表里', async () => {
+      const refs: CreatedRefs = {};
+
+      try {
+        const { teamId, taskId } = await createTaskInTeam(refs);
+
+        // 正向对照：团队还活着时这条任务必须在列表里，否则下面的「不在」毫无意义
+        const before = await request(app.getHttpServer())
+          .get('/api/tasks')
+          .set('Authorization', `Bearer ${aliceToken}`)
+          .expect(200);
+
+        const beforeIds = before.body.items.map(
+          (item: { id: string }) => item.id,
+        );
+        expect(beforeIds).toContain(taskId);
+
+        await softDeleteTeam(teamId);
+
+        const after = await request(app.getHttpServer())
+          .get('/api/tasks')
+          .set('Authorization', `Bearer ${aliceToken}`)
+          .expect(200);
+
+        const afterIds = after.body.items.map(
+          (item: { id: string }) => item.id,
+        );
+        expect(afterIds).not.toContain(taskId);
+      } finally {
+        await cleanup(refs);
+      }
     });
   });
 });

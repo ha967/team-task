@@ -100,7 +100,7 @@
 - **`createdBy` / `team` 让详情比列表宽**：同一个任务在列表和详情里的字段集合不同，前端不能把两份类型混用（已通过 AC7 固定形状）。
 - **`test/tasks.e2e-spec.ts` 的 diff 比「只加详情用例」大一圈**：多出约 15–25 行字段集合断言（常量 + helper + 三处调用）。这是你点名要的硬保证，代价是这一轮测试改动比接口本身还大。
 - **四条键集合断言会锁死返回体形状**：以后任何人往 `TASK_SELECT` 加字段，都必须同步改测试里的常量——这是刻意的，加字段等于改公共响应契约，本就该被拦一次。
-- **读路径补了 `team.deletedAt` 过滤，写路径没补**：`GET /api/tasks/:taskId` 会 404，但 `PATCH` / `DELETE` 走的 `getTaskOrThrow` 仍只有 `{ id, deletedAt: null }`，团队软删后知道 id 仍能改 / 删该任务。本轮 spec 把 `getTaskOrThrow` 明确划在范围外，因此这是**有意留到下一轮的不一致**，已记进 `docs/README.md` 的「尚未实现 / 已知缺口」。验收时不要把它当本轮 bug；TD8 只覆盖读路径。
+- **读路径补了 `team.deletedAt` 过滤，写路径当时没补（后续一轮已修复）**：`GET /api/tasks/:taskId` 会 404，但 `PATCH` / `DELETE` 走的 `getTaskOrThrow` 当时仍只有 `{ id, deletedAt: null }`，团队软删后知道 id 仍能改 / 删该任务。本轮 spec 把 `getTaskOrThrow` 明确划在范围外，因此这是**当时有意留到下一轮的不一致**，验收时不要把它当本轮 bug；TD8 只覆盖读路径。**修复**：写路径改用与列表 / 详情共享的 `TASK_ALIVE_FILTER`，软删团队下的任务 PATCH / DELETE 也返回 404（见 `test/tasks.e2e-spec.ts` 的 TE1–TE3）。
 - **不做 `include` 参数**（`?include=comments` 之类）：本轮没有评论模块可挂，提前留钩子会变成没人用的死代码。
 
 ## 预计改动

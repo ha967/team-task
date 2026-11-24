@@ -28,6 +28,7 @@ tools: Read, Grep, Glob, Bash
 - Prisma 查询是否显式 `select`？有没有把 `passwordHash`、`createdById`、`deletedAt` 等内部字段透给前端？
 - 软删除过滤 `deletedAt: null` 是否漏？列表、详情、关联查询都查一遍。
 - **同一语义是否在所有入口一致？** 软删过滤、权限判定、字段白名单、"这个资源算不算存在" 这类规则往往在多个入口各写一遍（列表 / 详情 / 更新 / 删除、不同 service 方法、不同 controller 路由）：重点查**本轮是否只给其中一个入口补了规则，其余入口仍走旧逻辑**。每处单独看都自洽，合起来才露馅 —— 例如本轮给详情加了 `team.deletedAt` 过滤、而 `PATCH` / `DELETE` 共用的 `getTaskOrThrow` 没加，就会出现「详情 404、但知道 id 仍能改」。发现这类问题时，明确指出它是「本轮违约」还是「spec 已划出范围的已知缺口」。
+- **重构波及的每个入口是否都有回归测试？** 把散落的规则抽成共享常量 / 方法时，被覆盖的入口可能有 3–4 处，而测试若只覆盖其中 N-1 处，剩下那一处「改坏了也全绿」。逐个数：列表 / 详情 / 更新 / 删除各自有没有一条用例能在规则被去掉时变红？只测了「返回值没变」不算，要测「规则失效会红」。
 - JWT 相关：`typ` 是否校验？refresh token 能不能当 access 用？是否只存哈希？
 - 权限判定是否在 service 层（`assertTeamMember` / `canModify`），controller 是否保持薄？
 - 有没有把权限判断建立在**客户端传上来的 id**上（例如从 query 里取 `userId` 而不是用 `@CurrentUser('sub')`）？这是水平越权的经典入口。
