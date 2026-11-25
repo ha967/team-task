@@ -4,6 +4,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { createObserveModule } from '@nestjs/observe';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard.js';
+import { CommentsModule } from './comments/comments.module.js';
 import { TasksModule } from './tasks/tasks.module.js';
 import { UserModule } from './user/user.module.js';
 import { TeamsModule } from './teams/teams.module.js';
@@ -30,6 +31,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       serviceId: 'team-task',
     }),
     TasksModule,
+    CommentsModule,
     UserModule,
     AuthModule,
     PrismaModule,

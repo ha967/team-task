@@ -212,6 +212,27 @@ export class TasksService {
     return task;
   }
 
+  /**
+   * 任务存在性判定，供评论模块复用：任务本身未软删，且所属团队未软删。
+   *
+   * 返回值只带「评论落地需要的信息」（id + teamId）。评论模块不复制 TASK_ALIVE_FILTER，
+   * 否则「任务算不算存在」会出现两份定义，迟早分叉成「任务 404、评论 200」。
+   */
+  async assertTaskAlive(
+    taskId: string,
+  ): Promise<{ id: string; teamId: string }> {
+    const task = await this.prismaService.task.findFirst({
+      where: { id: taskId, ...TASK_ALIVE_FILTER },
+      select: { id: true, teamId: true },
+    });
+
+    if (!task) {
+      throw new NotFoundException('任务不存在');
+    }
+
+    return task;
+  }
+
   // 更新 / 删除的入口。存在性判定与详情、列表共用 TASK_ALIVE_FILTER：
   // 团队被软删后，知道 id 也改不动 / 删不掉这条任务，与 GET /tasks/:taskId 的 404 一致
   private async getTaskOrThrow(taskId: string) {
