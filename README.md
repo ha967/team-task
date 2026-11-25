@@ -77,12 +77,12 @@ npm run dev             # 同时起 API(:3001) + web(:5173)
 - 用户：`GET /api/users/me`。
 - 团队：`GET /api/teams`（我参与的）、`GET /api/teams/:teamId`（含成员）、`POST /api/teams`（建团队 + 建者成为 `OWNER`，同一事务）。
 - 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`GET /api/tasks/:taskId`（详情，比列表多带 `createdBy` / `team`）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。读 / 写四条路径的「任务算不算存在」统一走 `TASK_ALIVE_FILTER`（任务与所属团队都未软删）。
+- 评论：`GET /api/tasks/:taskId/comments`（按创建时间升序）、`POST /api/tasks/:taskId/comments`、`PATCH /api/comments/:commentId`、`DELETE /api/comments/:commentId`（软删除）。任务所属团队的成员都能读 / 写；编辑限作者本人，删除限作者或团队 `OWNER` / `ADMIN`。任务或团队软删后评论一并 404；「任务算不算存在」复用 `TasksService.assertTaskAlive`，不在评论模块里另写一份。
 - 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
 - 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。
 
 尚未实现（改动时留意）：
 
-- 评论：只有 schema + seed 数据，`src/comments/` 还是空目录，没有 controller / service。
 - 团队成员管理（邀请、改角色、移除）没有接口；团队目前只有列表 / 详情 / 创建。
 - 前端没有团队相关页面：`web/src/features/teams/` 只有拉数据的 `api.ts` / `useTeamMembers.ts`（给任务表单选团队和负责人用），没有列表 / 详情 / 成员管理页；评论自然也没有。
 - **任务写路径有一个极小的 TOCTOU 窗口**：`getTaskOrThrow` 判定「任务存在且团队未软删」之后，`PATCH` / `DELETE` 的 `update` 只按 `id` 匹配；若团队恰好在这两步之间被软删，这次写入仍会成功。窗口在单请求内、且需要并发软删，暂不处理。彻底闭合要把 `update` 换成 `updateMany({ where: { id, ...TASK_ALIVE_FILTER } })` 并检查 `count === 1`。
