@@ -27,6 +27,26 @@ export function formatDate(value: string | null) {
   return new Date(value).toLocaleString('zh-CN');
 }
 
+// 表格里用的紧凑日期：2026/11/25，避免详情级时间戳把列撑爆
+export function formatShortDate(value: string | null) {
+  if (!value) {
+    return '—';
+  }
+
+  const date = new Date(value);
+  const pad = (part: number) => String(part).padStart(2, '0');
+
+  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())}`;
+}
+
+export function isOverdue(task: { dueAt: string | null; status: TaskStatus }) {
+  if (!task.dueAt || task.status === 'DONE') {
+    return false;
+  }
+
+  return new Date(task.dueAt).getTime() < Date.now();
+}
+
 // <input type="datetime-local"> 需要本地时区的 yyyy-MM-ddTHH:mm，直接用 ISO 串会差 8 小时
 export function toDateTimeLocal(value: string | null) {
   if (!value) {

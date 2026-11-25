@@ -4,13 +4,55 @@ import type {
   Task,
   TaskDetail,
   TaskListResponse,
+  TaskStatus,
   UpdateTaskPayload,
 } from './types';
 
 export const tasksApi = {
-  // 后端已支持 status / assigneeId / page / pageSize，本轮界面上只用到默认分页
-  list() {
-    return apiFetch<TaskListResponse>('/tasks');
+  // 后端支持 status / assigneeId / page / pageSize
+  list(params: { page?: number; pageSize?: number; status?: TaskStatus } = {}) {
+    const search = new URLSearchParams();
+
+    if (params.page !== undefined) {
+      search.set('page', String(params.page));
+    }
+
+    if (params.pageSize !== undefined) {
+      search.set('pageSize', String(params.pageSize));
+    }
+
+    if (params.status !== undefined) {
+      search.set('status', params.status);
+    }
+
+    const query = search.toString();
+
+    return apiFetch<TaskListResponse>(
+      `/tasks${query === '' ? '' : `?${query}`}`,
+    );
+  },
+
+  // 概览页的 KPI / 图表 / 本地筛选都基于完整任务集，逐页取完（后端 pageSize 上限 100）。
+  // 只取第一页会让「任务总数」用后端 total、状态计数却只统计前 100 条，口径分裂。
+  async listAll() {
+    const pageSize = 100;
+    const items: Task[] = [];
+    let total = 0;
+    let page = 1;
+
+    for (;;) {
+      const result = await this.list({ page, pageSize });
+      items.push(...result.items);
+      total = result.total;
+
+      if (result.items.length === 0 || items.length >= total) {
+        break;
+      }
+
+      page += 1;
+    }
+
+    return { items, total };
   },
 
   detail(taskId: string) {

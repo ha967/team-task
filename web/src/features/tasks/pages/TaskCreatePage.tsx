@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import type { Team } from '../../teams/types';
+import { ChevronLeft } from 'lucide-react';
+import { ErrorNote, LoadingState } from '../../../shared/ui/StateNotes';
+import { useToast } from '../../../shared/ui/Toast';
 import { teamsApi } from '../../teams/api';
 import { useTeamMembers } from '../../teams/useTeamMembers';
+import type { Team } from '../../teams/types';
 import { tasksApi } from '../api';
 import { TaskForm, type TaskFormPayload } from '../components/TaskForm';
 
 export function TaskCreatePage() {
   const navigate = useNavigate();
+  const toast = useToast();
 
   const [teams, setTeams] = useState<Team[]>([]);
   const [teamsLoading, setTeamsLoading] = useState(true);
@@ -62,6 +66,7 @@ export function TaskCreatePage() {
 
     try {
       const created = await tasksApi.create({ teamId, ...payload });
+      toast(`已创建「${created.title}」`);
       navigate(`/tasks/${created.id}`, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : '创建任务失败');
@@ -71,36 +76,48 @@ export function TaskCreatePage() {
   }
 
   return (
-    <div className="page">
-      <header className="topbar">
-        <h1>新建任务</h1>
-        <Link to="/tasks" className="button secondary">
-          返回列表
-        </Link>
-      </header>
+    <div className="mx-auto max-w-[880px]">
+      <Link
+        to="/tasks"
+        className="inline-flex items-center gap-1 text-[13px] text-softink transition-colors hover:text-ink"
+      >
+        <ChevronLeft size={16} strokeWidth={1.75} />
+        返回概览
+      </Link>
 
-      {teamsLoading ? <p className="muted">正在加载团队…</p> : null}
-      {teamsError ? <p className="error">{teamsError}</p> : null}
-      {membersError ? <p className="error">{membersError}</p> : null}
+      <div className="mt-3">
+        <h1 className="text-2xl font-semibold tracking-[-0.01em]">新建任务</h1>
+        <p className="mt-1 text-[13px] text-softink">
+          选好团队和负责人，保存后立即出现在任务列表里。
+        </p>
+      </div>
 
-      {!teamsLoading && !teamsError && teams.length === 0 ? (
-        <p className="muted">你还没有加入任何团队，无法创建任务。</p>
-      ) : null}
+      <div className="mt-5 flex flex-col gap-4">
+        {teamsLoading ? <LoadingState label="正在加载团队…" /> : null}
+        {teamsError ? <ErrorNote message={teamsError} /> : null}
+        {membersError ? <ErrorNote message={membersError} /> : null}
 
-      {!teamsLoading && !teamsError && teams.length > 0 ? (
-        <TaskForm
-          mode="create"
-          teams={teams}
-          teamId={teamId}
-          onSelectTeam={setTeamId}
-          members={members}
-          membersLoading={membersLoading}
-          submitting={submitting}
-          error={error}
-          onSubmit={handleSubmit}
-          onCancel={() => navigate('/tasks')}
-        />
-      ) : null}
+        {!teamsLoading && !teamsError && teams.length === 0 ? (
+          <p className="panel p-5 text-[13px] text-softink">
+            你还没有加入任何团队，无法创建任务。
+          </p>
+        ) : null}
+
+        {!teamsLoading && !teamsError && teams.length > 0 ? (
+          <TaskForm
+            mode="create"
+            teams={teams}
+            teamId={teamId}
+            onSelectTeam={setTeamId}
+            members={members}
+            membersLoading={membersLoading}
+            submitting={submitting}
+            error={error}
+            onSubmit={handleSubmit}
+            onCancel={() => navigate('/tasks')}
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

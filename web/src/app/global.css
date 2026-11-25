@@ -1,299 +1,183 @@
-:root {
-  color-scheme: light;
-  --bg: #f5f6f8;
-  --surface: #ffffff;
-  --text: #1c2430;
-  --muted: #667085;
-  --border: #e4e7ec;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --danger: #b42318;
-  --radius: 10px;
-  --shadow: 0 1px 2px rgb(16 24 40 / 6%), 0 4px 12px rgb(16 24 40 / 4%);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    'PingFang SC',
-    'Microsoft YaHei',
-    sans-serif;
-  line-height: 1.6;
-  color: var(--text);
-  background: var(--bg);
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light;
+    --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply min-h-screen bg-ground font-sans text-sm text-ink antialiased;
+    line-height: 1.5;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  a {
+    color: inherit;
+  }
+
+  ::selection {
+    background: #eeedfc;
+  }
+
+  :focus-visible {
+    outline: 2px solid #4f46e5;
+    outline-offset: 3px;
+  }
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@layer components {
+  .panel {
+    @apply rounded-[10px] border border-line bg-panel;
+  }
+
+  .btn {
+    @apply inline-flex h-[38px] shrink-0 items-center justify-center gap-2 rounded-lg border border-transparent px-3.5 text-[13.5px] font-semibold leading-none transition-colors duration-150 disabled:pointer-events-none disabled:opacity-55;
+  }
+
+  .btn-primary {
+    @apply bg-indigo text-white hover:bg-indigo-deep active:bg-indigo-deep;
+  }
+
+  .btn-ghost {
+    @apply border-line bg-panel text-ink hover:bg-panel-2;
+  }
+
+  .btn-danger {
+    @apply bg-ruby text-white hover:bg-[#a53434];
+  }
+
+  .btn-icon {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-softink transition-colors duration-150 hover:bg-panel-2 hover:text-ink;
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-[12.5px] font-medium text-softink;
+  }
+
+  .field-input {
+    @apply h-[38px] w-full rounded-lg border border-line bg-panel px-3 text-sm text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-softink/65 focus:border-indigo focus:ring-2 focus:ring-indigo/15 focus-visible:outline-none disabled:cursor-not-allowed disabled:bg-panel-2 disabled:text-softink;
+  }
+
+  .field-textarea {
+    @apply w-full resize-y rounded-lg border border-line bg-panel px-3 py-2.5 text-sm leading-6 text-ink outline-none transition-[border-color,box-shadow] duration-150 placeholder:text-softink/65 focus:border-indigo focus:ring-2 focus:ring-indigo/15 focus-visible:outline-none;
+  }
+
+  .chip {
+    @apply inline-flex h-6 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-[12px] font-medium leading-none;
+  }
+
+  .mono {
+    @apply font-mono tabular-nums;
+  }
+
+  .caption {
+    @apply text-[12.5px] text-softink;
+  }
+
+  .table-head {
+    @apply h-[42px] border-b border-line bg-panel-2 px-3 text-left text-[12px] font-medium uppercase tracking-[0.04em] text-softink;
+  }
+
+  .table-row {
+    @apply h-[52px] border-b border-line text-sm transition-colors duration-100 last:border-b-0;
+  }
+
+  .row-fade {
+    animation: rowFade 140ms var(--ease-out) both;
+  }
+
+  .chart-reveal {
+    animation: chartReveal 700ms var(--ease-out) both;
+  }
+
+  .toast-progress {
+    transform-origin: left;
+    animation: toastProgress 2.8s linear both;
+  }
+
+  dialog {
+    animation: viewFade 180ms var(--ease-out) both;
+  }
+
+  dialog::backdrop {
+    background: rgb(18 19 26 / 24%);
+  }
 }
 
-body {
-  min-height: 100vh;
-  margin: 0;
+@keyframes viewFade {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
-h1,
-h2,
-p {
-  margin: 0;
+@keyframes rowFade {
+  from {
+    opacity: 0.35;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
-button,
-input,
-select,
-textarea {
-  font: inherit;
+@keyframes chartReveal {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
 }
 
-button {
-  cursor: pointer;
-  padding: 0.55rem 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: #fff;
-  background: var(--primary);
-  transition: background 0.15s ease;
+@keyframes toastProgress {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
 }
 
-button:hover:not(:disabled) {
-  background: var(--primary-hover);
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-button.secondary {
-  color: var(--text);
-  background: var(--surface);
-  border-color: var(--border);
-}
-
-button.secondary:hover {
-  background: var(--bg);
-}
-
-a {
-  color: var(--primary);
-}
-
-.page {
-  max-width: 860px;
-  margin: 0 auto;
-  padding: 2rem 1.25rem 3rem;
-}
-
-.page-center {
-  display: grid;
-  place-items: center;
-  min-height: 100vh;
-  padding: 1.25rem;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.topbar h1 {
-  font-size: 1.5rem;
-}
-
-.card {
-  padding: 1.25rem;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-  width: min(100%, 380px);
-}
-
-.form h1 {
-  font-size: 1.4rem;
-}
-
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.92rem;
-}
-
-.field input,
-.field select,
-.field textarea {
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  outline: none;
-  background: var(--surface);
-}
-
-.field textarea {
-  resize: vertical;
-}
-
-.field input:focus,
-.field select:focus,
-.field textarea:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 15%);
-}
-
-/* 表单里成对出现的字段（状态 + 优先级、负责人 + 工时） */
-.field-row {
-  display: flex;
-  gap: 0.9rem;
-}
-
-.field-row > .field {
-  flex: 1;
-  min-width: 0;
-}
-
-/* 表单 + 详情页的操作按钮区 */
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-button.danger {
-  background: var(--danger);
-}
-
-button.danger:hover:not(:disabled) {
-  background: #8f1d14;
-}
-
-/* 用 <Link> 做出按钮外观：导航语义靠 <a>，样式与 button 对齐 */
-.button {
-  display: inline-block;
-  padding: 0.55rem 1rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  color: #fff;
-  background: var(--primary);
-  text-decoration: none;
-}
-
-.button:hover {
-  background: var(--primary-hover);
-}
-
-.button.secondary {
-  color: var(--text);
-  background: var(--surface);
-  border-color: var(--border);
-}
-
-.button.secondary:hover {
-  background: var(--bg);
-}
-
-.muted {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.error {
-  color: var(--danger);
-  font-size: 0.9rem;
-}
-
-.task-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.task-item h2 {
-  margin: 0.35rem 0;
-  font-size: 1.05rem;
-}
-
-.task-item p {
-  margin-bottom: 0.5rem;
-  color: var(--muted);
-  font-size: 0.92rem;
-}
-
-.task-meta {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.badge {
-  padding: 0.1rem 0.55rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  border-radius: 999px;
-}
-
-.badge-todo {
-  color: #475467;
-  background: #eef2f6;
-}
-
-.badge-in_progress {
-  color: #b54708;
-  background: #fef0c7;
-}
-
-.badge-done {
-  color: #067647;
-  background: #dcfae6;
-}
-
-/* 任务表单比登录表单宽：字段成对排列，textarea 要撑开 */
-.form-wide {
-  width: min(100%, 640px);
-}
-
-.task-item h2 a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.task-item h2 a:hover {
-  color: var(--primary);
-  text-decoration: underline;
-}
-
-/* 详情页的描述要保留换行，否则用户敲的空行全被吃掉 */
-.task-description {
-  color: var(--muted);
-  white-space: pre-wrap;
-}
-
-.detail-grid {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.5rem 1.25rem;
-  margin: 1.25rem 0 1.5rem;
-  font-size: 0.92rem;
-}
-
-.detail-grid dt {
-  color: var(--muted);
-}
-
-.detail-grid dd {
-  margin: 0;
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

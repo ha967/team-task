@@ -100,55 +100,62 @@ export function TaskForm({
   }
 
   return (
-    <form className="card form form-wide" onSubmit={handleSubmit}>
-      <h1>{mode === 'create' ? '新建任务' : '编辑任务'}</h1>
+    <form className="panel p-5 sm:p-6" onSubmit={handleSubmit}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {mode === 'create' ? (
+          <label className="block sm:col-span-2">
+            <span className="field-label">所属团队</span>
+            <select
+              value={teamId}
+              onChange={(event) => onSelectTeam?.(event.target.value)}
+              className="field-input"
+              required
+            >
+              <option value="">请选择团队</option>
+              {(teams ?? []).map((team) => (
+                <option key={team.id} value={team.id}>
+                  {team.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <p className="rounded-lg bg-panel-2 px-3 py-2.5 text-[13px] text-softink sm:col-span-2">
+            所属团队：
+            <span className="font-medium text-ink">
+              {initial?.team.name ?? '—'}
+            </span>
+          </p>
+        )}
 
-      {mode === 'create' ? (
-        <label className="field">
-          <span>所属团队</span>
-          <select
-            value={teamId}
-            onChange={(event) => onSelectTeam?.(event.target.value)}
+        <label className="block sm:col-span-2">
+          <span className="field-label">标题</span>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            className="field-input"
+            maxLength={200}
             required
-          >
-            <option value="">请选择团队</option>
-            {(teams ?? []).map((team) => (
-              <option key={team.id} value={team.id}>
-                {team.name}
-              </option>
-            ))}
-          </select>
+          />
         </label>
-      ) : (
-        <p className="muted">所属团队：{initial?.team.name ?? '—'}</p>
-      )}
 
-      <label className="field">
-        <span>标题</span>
-        <input
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          maxLength={200}
-          required
-        />
-      </label>
+        <label className="block sm:col-span-2">
+          <span className="field-label">描述</span>
+          <textarea
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+            className="field-textarea"
+            maxLength={5000}
+            rows={5}
+          />
+        </label>
 
-      <label className="field">
-        <span>描述</span>
-        <textarea
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          maxLength={5000}
-          rows={4}
-        />
-      </label>
-
-      <div className="field-row">
-        <label className="field">
-          <span>状态</span>
+        <label className="block">
+          <span className="field-label">状态</span>
           <select
             value={status}
             onChange={(event) => setStatus(event.target.value as TaskStatus)}
+            className="field-input"
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -158,11 +165,12 @@ export function TaskForm({
           </select>
         </label>
 
-        <label className="field">
-          <span>优先级</span>
+        <label className="block">
+          <span className="field-label">优先级</span>
           <select
             value={priority}
             onChange={(event) => setPriority(Number(event.target.value))}
+            className="field-input"
           >
             {PRIORITY_OPTIONS.map((option) => (
               <option key={option} value={option}>
@@ -171,14 +179,13 @@ export function TaskForm({
             ))}
           </select>
         </label>
-      </div>
 
-      <div className="field-row">
-        <label className="field">
-          <span>负责人</span>
+        <label className="block">
+          <span className="field-label">负责人</span>
           <select
             value={assigneeId}
             onChange={(event) => setAssigneeId(event.target.value)}
+            className="field-input"
             disabled={membersLoading || !teamId}
           >
             <option value="">未指派</option>
@@ -190,45 +197,50 @@ export function TaskForm({
           </select>
         </label>
 
-        <label className="field">
-          <span>预计工时（小时）</span>
+        <label className="block">
+          <span className="field-label">预计工时（小时）</span>
           <input
             type="number"
             min={1}
             max={1000}
             value={estimateHours}
             onChange={(event) => setEstimateHours(event.target.value)}
+            className="field-input mono"
+          />
+        </label>
+
+        <label className="block sm:col-span-2">
+          <span className="field-label">截止时间</span>
+          <input
+            type="datetime-local"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+            className="field-input mono sm:max-w-[280px]"
           />
         </label>
       </div>
 
-      <label className="field">
-        <span>截止时间</span>
-        <input
-          type="datetime-local"
-          value={dueAt}
-          onChange={(event) => setDueAt(event.target.value)}
-        />
-      </label>
-
       {(localError ?? error) !== null ? (
-        <p className="error">{localError ?? error}</p>
+        <p className="mt-4 rounded-lg border border-ruby/20 bg-ruby/5 px-3 py-2 text-[13px] text-ruby">
+          {localError ?? error}
+        </p>
       ) : null}
 
-      <div className="actions">
-        <button
-          type="submit"
-          disabled={submitting || (mode === 'create' && !teamId)}
-        >
-          {submitting ? '保存中…' : '保存'}
-        </button>
+      <div className="mt-6 flex items-center justify-end gap-2 border-t border-line pt-4">
         <button
           type="button"
-          className="secondary"
+          className="btn btn-ghost"
           onClick={onCancel}
           disabled={submitting}
         >
           取消
+        </button>
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={submitting || (mode === 'create' && !teamId)}
+        >
+          {submitting ? '保存中…' : '保存'}
         </button>
       </div>
     </form>

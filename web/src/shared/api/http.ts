@@ -1,5 +1,6 @@
 import { tokenStorage } from '../../features/auth/token-storage';
 import type { TokenPair } from '../../features/auth/types';
+import { beginApiRequest, settleApiRequest } from './status';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '/api';
 
@@ -28,6 +29,31 @@ export async function apiFetch<T>(
   path: string,
   options: RequestOptions = {},
 ): Promise<T> {
+  beginApiRequest();
+  let reachable = false;
+
+  try {
+    const result = await request<T>(path, options);
+    reachable = true;
+    return result;
+  } catch (error) {
+    // 4xx（401 除外）说明 API 是通的，只是业务拒绝（例如 403 / 404）；
+    // 页面会展示具体错误，顶栏不应因此报「连接失败」。
+    if (
+      error instanceof ApiError &&
+      error.status < 500 &&
+      error.status !== 401
+    ) {
+      reachable = true;
+    }
+
+    throw error;
+  } finally {
+    settleApiRequest(reachable);
+  }
+}
+
+async function request<T>(path: string, options: RequestOptions): Promise<T> {
   const { body, headers, skipAuth = false, ...rest } = options;
 
   const send = (token: string | null) =>
