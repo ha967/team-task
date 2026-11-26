@@ -6,6 +6,7 @@ import { InitialsDot } from '../../../shared/ui/InitialsDot';
 import { MonogramTile } from '../../../shared/ui/MonogramTile';
 import { ErrorNote, LoadingState } from '../../../shared/ui/StateNotes';
 import { useToast } from '../../../shared/ui/Toast';
+import { CommentSection } from '../../comments/components/CommentSection';
 import { tasksApi } from '../api';
 import { PriorityChip } from '../components/PriorityChip';
 import { StatusChip } from '../components/StatusChip';
@@ -189,6 +190,8 @@ export function TaskDetailPage() {
               </dl>
             </aside>
           </div>
+
+          <CommentSection taskId={task.id} />
         </>
       ) : null}
 

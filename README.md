@@ -97,12 +97,12 @@ docker compose --profile preview up -d nginx   # 打开 http://localhost:8080
 - 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`GET /api/tasks/:taskId`（详情，比列表多带 `createdBy` / `team`）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。读 / 写四条路径的「任务算不算存在」统一走 `TASK_ALIVE_FILTER`（任务与所属团队都未软删）。
 - 评论：`GET /api/tasks/:taskId/comments`（按创建时间升序）、`POST /api/tasks/:taskId/comments`、`PATCH /api/comments/:commentId`、`DELETE /api/comments/:commentId`（软删除）。任务所属团队的成员都能读 / 写；编辑限作者本人，删除限作者或团队 `OWNER` / `ADMIN`。任务或团队软删后评论一并 404；「任务算不算存在」复用 `TasksService.assertTaskAlive`，不在评论模块里另写一份。
 - 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
-- 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。
+- 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。任务详情页底部有通栏评论区：读取列表、发表、行内编辑自己的评论、确认后软删。
 
 尚未实现（改动时留意）：
 
 - 团队成员管理（邀请、改角色、移除）没有接口；团队目前只有列表 / 详情 / 创建。
-- 前端没有团队相关页面：`web/src/features/teams/` 只有拉数据的 `api.ts` / `useTeamMembers.ts`（给任务表单选团队和负责人用），没有列表 / 详情 / 成员管理页；评论自然也没有。
+- 前端没有团队相关页面：`web/src/features/teams/` 只有拉数据的 `api.ts` / `useTeamMembers.ts`（给任务表单选团队和负责人用），没有列表 / 详情 / 成员管理页。
 - **任务写路径有一个极小的 TOCTOU 窗口**：`getTaskOrThrow` 判定「任务存在且团队未软删」之后，`PATCH` / `DELETE` 的 `update` 只按 `id` 匹配；若团队恰好在这两步之间被软删，这次写入仍会成功。窗口在单请求内、且需要并发软删，暂不处理。彻底闭合要把 `update` 换成 `updateMany({ where: { id, ...TASK_ALIVE_FILTER } })` 并检查 `count === 1`。
 - **负责人是已软删用户时，前端编辑页的下拉里没有这个人**：`GET /api/teams/:id` 的成员列表过滤了 `user.deletedAt: null`，而任务详情 / 列表的 `assignee` 不过滤 —— 两者不一致会让下拉渲染成空白，但 `assigneeId` 仍是旧值，保存其他字段时会静默保留原负责人。当前没有用户注销接口、seed 也不产生这种数据，暂不处理（修法：成员列表不过滤软删用户，或详情里把已软删负责人标成「已注销」）。
 - schema 层还剩两条故意不修的问题（`tasks.assignee_id` 复合外键、`team_members` 缺 `leftAt`），详见「表设计与建模规范 → 本项目现有设计的已知问题」。
