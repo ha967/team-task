@@ -19,6 +19,24 @@ npm run dev             # 同时起 API(:3001) + web(:5173)
 
 其它常用命令：`npm run lint`、`npm test`、`npm run test:e2e`（需 Postgres 在跑）、`npm run build:web`、`npx prisma studio`。
 
+## 构建产物与 Docker 预览（Nginx）
+
+开发用 `npm run dev`；想验收生产构建产物时，用 Docker 起一个 Nginx：静态托管 `web/dist`，并把 `/api` 反代到本机 3001 的 NestJS。前后端同源，所以后端不需要开 CORS。
+
+```bash
+npm run build:web                              # 产物在 web/dist/（已 gitignore）
+npm run dev:api                                # 或 npm run build && npm run start:prod
+docker compose --profile preview up -d nginx   # 打开 http://localhost:8080
+```
+
+- `deploy/nginx.conf`：SPA 回退（刷新 `/tasks/xxx` 不 404）+ `/api/` 反代 + 静态资源长缓存。
+- `compose.yml` 的 `nginx` 服务带 `profiles: ['preview']`，默认 `docker compose up -d` 只起 Postgres，不会因为 `web/dist` 不存在而挂一个空站点。
+- 容器通过 `host.docker.internal:3001` 访问宿主机后端；Linux 的兼容映射已写在 `extra_hosts` 里。
+- Nginx 是静态服务，改前端代码后要重新 `npm run build:web`，不会热更新。
+- 停止：`docker compose --profile preview stop nginx`。
+- 审核构建产物也可以不用 Docker：`npm run preview -w web`（默认 4173，但预览服务器没有 `/api` 代理，需要另配 `preview.proxy` 或用 Nginx）。
+- 真上生产：把 `web/dist` 放进任意静态站点并配置 SPA 回退，`/api` 反代到 Node 进程；Nginx 配 HTTPS，Postgres 端口不要暴露到公网。
+
 ## 概览
 
 ### 项目目的
