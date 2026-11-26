@@ -26,6 +26,7 @@
 - Refresh token 只存 SHA-256 哈希，登录/刷新时轮换；旧令牌被复用则撤销该用户全部活跃令牌（见 `src/auth/auth.service.ts`）。
 - 入参一律 DTO + class-validator；全局 `ValidationPipe({ transform, whitelist, forbidNonWhitelisted })`，未声明字段直接 400。
 - Prisma 查询必须显式 `select`，禁止把 `passwordHash`、`createdById` 等内部字段透给前端；软删除统一 `deletedAt: null` 过滤。
+- 团队成员离开用 `leftAt`（`null` = 仍在队），不是软删；查活跃成员一律带 `leftAt: null`。`TeamMember` 是 `id` 主键 + 迁移里手写的部分唯一索引 `team_members_active_key`（`(team_id, user_id) WHERE left_at IS NULL`），**不要**在 schema 写回 `@@id([teamId, userId])` / `@@unique`，否则退出后重新加入会撞唯一约束。
 - 业务异常用 Nest 内置异常类（`NotFoundException` / `ForbiddenException` / `ConflictException`），不要手写 `res.status()`。
 - 权限判定放 service（如 `assertTeamMember`、`canModify`），controller 保持薄；`:id` 参数用 `ParseUUIDPipe`。
 
@@ -58,7 +59,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 - schema 源文件：`prisma/schema.prisma`；client 生成到 `src/generated/prisma/`，**已 gitignore**，clone 后必须先 `npx prisma generate`。
 - Prisma 配置写在 `prisma7.config.ts`（Prisma 7 CLI 识别的文件名，加载 dotenv + schema/migrations/seed 路径），不要改成 `prisma.config.ts`。
 - `PrismaService` 继承生成的 `PrismaClient` 并注入 `PrismaPg` adapter，`DATABASE_URL` 缺失时 `getOrThrow` 会拒绝启动。
-- 模型：User / Team / TeamMember / Task / Comment / RefreshToken；全部 snake_case 列名映射 + 软删除。
+- 模型：User / Team / TeamMember / Task / Comment / RefreshToken；全部 snake_case 列名映射。User / Team / Task / Comment 走 `deletedAt` 软删；TeamMember 用 `leftAt` 记录离开并保留历史行。
 - 环境变量启动期校验：`src/config/env.validation.ts`（`JWT_SECRET` 至少 32 字符）。
 
 ## 项目结构
@@ -68,6 +69,7 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 | `src/app.module.ts` | 模块装配 + 全局 JwtAuthGuard + 配置校验 |
 | `src/auth/` | 注册 / 登录 / 刷新 / 登出、JWT 守卫 |
 | `src/user/` | 用户查询（`GET /users/me`） |
+| `src/teams/` | 团队列表 / 详情 / 创建 + 成员管理（邀请 / 改角色 / 移除 / 退出）+ 共用成员权限判定 |
 | `src/tasks/` | 任务 CRUD（`/tasks`）+ 团队权限校验 |
 | `src/comments/` | 评论 CRUD（`/tasks/:taskId/comments`、`/comments/:commentId`）+ 作者 / 角色判定 |
 | `src/prisma/` | `PrismaService` / `PrismaModule` |
@@ -82,11 +84,11 @@ npx prisma studio                      # 图形化查看数据，默认 http://l
 | `test/` | e2e 测试目录 |
 
 ## 已知缺口（改动时留意）
-- **单元测试只有两处**：`src/user/user.service.spec.ts`（`normalizeEmail` / `extractUniqueTargets` / `mapUniqueConflict` 三个纯函数）、`src/comments/comment-permissions.spec.ts`（评论编辑 / 删除的纯判定），都不需要数据库。`tasks.service.ts` 的角色判定、`team-access.service.ts` 的成员校验仍只有 e2e 覆盖 —— 改这类纯逻辑时优先补 `*.spec.ts`，别只靠 e2e 撞。
+- **单元测试只覆盖纯函数**：`src/user/user.service.spec.ts`（`normalizeEmail` / `extractUniqueTargets` / `mapUniqueConflict`）、`src/comments/comment-permissions.spec.ts`（评论编辑 / 删除的纯判定）、`src/teams/team-member-permissions.spec.ts`（成员邀请 / 改角色 / 移除的权限矩阵），都不需要数据库。`tasks.service.ts` 的角色判定、`team-access.service.ts` 的成员校验仍只有 e2e 覆盖 —— 改这类纯逻辑时优先补 `*.spec.ts`，别只靠 e2e 撞。
 - `src/logger.middeware.ts` 是未接入的示例中间件（文件名拼写如此）。
 - `ObserveModule` 的 appKey / appSecret 仍是占位值。
 - **`users` 的 `username` / `email` 唯一性只存在于迁移 SQL 里**：部分唯一索引 `users_email_active_key` / `users_username_active_key`（`WHERE deleted_at IS NULL`）。`schema.prisma` 里**没有** `@unique`，不要加回去——那会让下一次 `migrate dev` 重建全量唯一索引，把「软删用户占着邮箱」的 bug 带回来。按 email 查用户一律 `findFirst({ where: { email, deletedAt: null } })`，`findUnique` 现在连类型都过不了。
-- schema 层还剩两条**故意不修**的问题（详见 `README.md` 的「本项目现有设计的已知问题」）：`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」（靠 `TeamAccessService` 兜）；`team_members` 没有 `leftAt`——一旦实现成员管理接口（邀请 / 移除 / 退出）必须先补 `leftAt` 再动接口。
+- schema 层还剩一条**故意不修**的问题（详见 `README.md` 的「本项目现有设计的已知问题」）：`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」（靠 `TeamAccessService` 兜）。`team_members` 的 `leftAt` 已补（迁移 `20261126173000_add_team_member_leave`），成员离开只写 `leftAt`、不删行；活跃过滤见上。
 
 ## 开发工作流
 三档，别一律全套跑（流程比改动重就是负担）。

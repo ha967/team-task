@@ -34,13 +34,15 @@ export class TeamAccessService {
     return team;
   }
 
-  // 调用者必须是团队成员 → 否则 403；返回 role 供调用方做进一步判断
+  // 调用者必须是「活跃」团队成员 → 否则 403；返回 role 供调用方做进一步判断。
+  // team_members 现在允许保留离开的历史行（leftAt 非空），所以不能只看 (teamId, userId)：
+  // 漏掉 leftAt: null 就等于退出的人仍然拥有该团队的全部读写权限。
   async assertTeamMember(
     teamId: string,
     userId: string,
   ): Promise<TeamMembership> {
-    const membership = await this.prisma.teamMember.findUnique({
-      where: { teamId_userId: { teamId, userId } },
+    const membership = await this.prisma.teamMember.findFirst({
+      where: { teamId, userId, leftAt: null },
       select: { role: true },
     });
 

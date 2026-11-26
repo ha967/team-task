@@ -171,7 +171,11 @@ export class TasksService {
     const where = {
       // 用 AND 组合，而不是「展开后再整个覆盖 team」：Prisma 会合并 AND 里的关系条件，
       // 少写一个键也只是多一条约束、不会静默丢掉 TASK_ALIVE_FILTER 里的 team.deletedAt
-      AND: [TASK_ALIVE_FILTER, { team: { members: { some: { userId } } } }],
+      AND: [
+        TASK_ALIVE_FILTER,
+        // leftAt: null = 仍在团队里；退出者的历史成员行不能让他继续在列表里看到任务
+        { team: { members: { some: { userId, leftAt: null } } } },
+      ],
       ...(query.status ? { status: query.status } : {}),
       ...(query.assigneeId ? { assigneeId: query.assigneeId } : {}),
     };

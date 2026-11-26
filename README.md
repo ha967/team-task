@@ -96,16 +96,17 @@ docker compose --profile preview up -d nginx   # 打开 http://localhost:8080
 - 团队：`GET /api/teams`（我参与的）、`GET /api/teams/:teamId`（含成员）、`POST /api/teams`（建团队 + 建者成为 `OWNER`，同一事务）。
 - 任务：`GET /api/tasks`（分页 + 状态 / 负责人筛选）、`GET /api/tasks/:taskId`（详情，比列表多带 `createdBy` / `team`）、`POST /api/tasks`、`PATCH /api/tasks/:taskId`、`DELETE /api/tasks/:taskId`（软删除），全部带团队权限校验。读 / 写四条路径的「任务算不算存在」统一走 `TASK_ALIVE_FILTER`（任务与所属团队都未软删）。
 - 评论：`GET /api/tasks/:taskId/comments`（按创建时间升序）、`POST /api/tasks/:taskId/comments`、`PATCH /api/comments/:commentId`、`DELETE /api/comments/:commentId`（软删除）。任务所属团队的成员都能读 / 写；编辑限作者本人，删除限作者或团队 `OWNER` / `ADMIN`。任务或团队软删后评论一并 404；「任务算不算存在」复用 `TasksService.assertTaskAlive`，不在评论模块里另写一份。
+- 团队成员：`POST /api/teams/:teamId/members`（按邮箱邀请已注册用户，入队固定为 `MEMBER`）、`PATCH /api/teams/:teamId/members/:userId`（仅 `OWNER` 改角色）、`DELETE /api/teams/:teamId/members/:userId`（移除；`userId` 是自己即退出）。`OWNER` / `ADMIN` 可邀请，`ADMIN` 只能移除 `MEMBER`，任何操作不能让团队失去最后一个活跃 `OWNER`。离开写 `left_at`、保留历史行；团队列表 / 详情、任务、评论一律只认活跃成员。
 - 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
 - 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。任务详情页底部有通栏评论区：读取列表、发表、行内编辑自己的评论、确认后软删。
 
 尚未实现（改动时留意）：
 
-- 团队成员管理（邀请、改角色、移除）没有接口；团队目前只有列表 / 详情 / 创建。
+- 成员管理只有「直接加人」：没有待接受的邀请流程、历史成员查询接口、跨团队用户搜索；也没有区分主动退出与被移除（只有 `left_at`）。
 - 前端没有团队相关页面：`web/src/features/teams/` 只有拉数据的 `api.ts` / `useTeamMembers.ts`（给任务表单选团队和负责人用），没有列表 / 详情 / 成员管理页。
 - **任务写路径有一个极小的 TOCTOU 窗口**：`getTaskOrThrow` 判定「任务存在且团队未软删」之后，`PATCH` / `DELETE` 的 `update` 只按 `id` 匹配；若团队恰好在这两步之间被软删，这次写入仍会成功。窗口在单请求内、且需要并发软删，暂不处理。彻底闭合要把 `update` 换成 `updateMany({ where: { id, ...TASK_ALIVE_FILTER } })` 并检查 `count === 1`。
-- **负责人是已软删用户时，前端编辑页的下拉里没有这个人**：`GET /api/teams/:id` 的成员列表过滤了 `user.deletedAt: null`，而任务详情 / 列表的 `assignee` 不过滤 —— 两者不一致会让下拉渲染成空白，但 `assigneeId` 仍是旧值，保存其他字段时会静默保留原负责人。当前没有用户注销接口、seed 也不产生这种数据，暂不处理（修法：成员列表不过滤软删用户，或详情里把已软删负责人标成「已注销」）。
-- schema 层还剩两条故意不修的问题（`tasks.assignee_id` 复合外键、`team_members` 缺 `leftAt`），详见「表设计与建模规范 → 本项目现有设计的已知问题」。
+- **负责人已不在团队 / 已被软删时，前端编辑页的下拉里没有这个人**：`GET /api/teams/:id` 的成员列表只返回活跃成员（`leftAt: null`）且过滤 `user.deletedAt: null`，而任务详情 / 列表的 `assignee` 不过滤 —— 两者不一致会让下拉渲染成空白，但 `assigneeId` 仍是旧值，保存其他字段时会静默保留原负责人。当前没有用户注销接口、seed 也不产生这种数据，暂不处理（修法：详情里把已离开负责人标成「已离开 / 已注销」，或编辑时要求显式改派）。
+- schema 层还剩一条故意不修的问题（`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」），详见「表设计与建模规范 → 本项目现有设计的已知问题」；`team_members` 的 `leftAt` 已在迁移 `20261126173000_add_team_member_leave` 中补上。
 
 
 ### 文档导航
@@ -245,32 +246,34 @@ model Team { members User[] }
 
 一旦需要角色、邀请时间、邀请人、是否已退出等字段，就必须**显式建表**（Prisma 文档里叫 explicit many-to-many relationship）。
 
-这张表的三行关键声明
+这张表的关键声明（当前 schema）
 
 ```prisma
 model TeamMember {
-  teamId String   @map("team_id") @db.Uuid
-  userId String   @map("user_id") @db.Uuid
-  role   TeamRole @default(MEMBER)
-  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+  id       String    @id @default(uuid()) @db.Uuid
+  teamId   String    @map("team_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  role     TeamRole  @default(MEMBER)
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  leftAt   DateTime? @map("left_at") @db.Timestamptz(3)  // null = 仍在队
 
-  @@id([teamId, userId])   // 复合主键
-  @@index([userId])        // 反向查询的索引
-  @@map("team_members")    // 表名映射
+  @@index([userId, leftAt])  // 「我加入了哪些活跃团队」
+  @@map("team_members")
 }
 ```
 
-- `@@id([teamId, userId])` 同时干了三件事：标识一行、给 `team_id` 建索引（复合主键的最左前缀）、**用约束保证“同一人不能重复加入同一团队”**。用数据库约束表达业务规则，比在代码里 `if (exists) throw` 可靠得多——并发下也不会漏。
-- `@@index([userId])`：主键索引的顺序是 `(team_id, user_id)`，能高效回答“这个团队有哪些人”，但回答不了“我加入了哪些团队”（最左前缀用不上）。所以要在 `user_id` 上补一个索引。**Postgres 不会自动给外键列建索引**，这是最容易漏的一步。
+- 用 `id` 代理主键而不是 `@@id([teamId, userId])`，是因为同一人退出后重新加入要留下多段历史；复合主键会把同一 `(团队, 用户)` 锁死成一行。活跃唯一性改由迁移里的**部分唯一索引**保证：`UNIQUE (team_id, user_id) WHERE left_at IS NULL`。用数据库约束表达“同一时刻不能重复加入”，比在代码里 `if (exists) throw` 可靠得多——并发下也不会漏。
+- `@@index([userId, leftAt])`：回答“我加入了哪些活跃团队”。**Postgres 不会自动给外键列建索引**，这是最容易漏的一步。
+- `leftAt` 是“这段关系结束的时间”，不是软删：有值的行仍然有效，是“他确实在这个团队待过”的历史；查活跃成员一律带 `leftAt: null`。
 - `onDelete: Cascade`：删团队 → 成员关系一起消失（合理）；删用户 → 成员关系一起消失（也合理）。注意 `Task.createdBy` 用的是 `Restrict`，这是有意的区分：**业务数据（任务）不能因为删人就消失，关系数据（成员关系）可以**。
 
-主键选型上，这里用复合主键而不是再加一个 `id uuid` 是对的——成员关系天然由 `(团队, 用户)` 唯一确定，加代理键只会多一列冗余索引。只有当 `team_members` 需要被别的表引用（比如“邀请记录指向某条成员关系”），或者 API 想用 `PATCH /team-members/:id` 时，才升级成带 `id` 的实体。
+主键选型：纯连接表、或“加入”是一次性事实时，复合主键 `(teamId, userId)` 最省；一旦要保留“加入—离开”多段历史，或者关系行要被别的表引用，就升级成 `id` 代理主键 + 部分唯一索引。
 
 #### 表设计“标准”
 
 **理论**
 
-- **范式**：1NF 字段原子（不塞 JSON 数组、不用逗号分隔串）→ 2NF 非主属性完全依赖整个主键（`role` 依赖 `(teamId, userId)` 整体而非只依赖 `teamId`，所以这张表符合）→ 3NF 消除传递依赖（`tasks` 里不该存 `team_name`，只存 `team_id`）。实务目标是 3NF，然后**为了读性能有理由地反范式**（报表表、冗余计数列）。
+- **范式**：1NF 字段原子（不塞 JSON 数组、不用逗号分隔串）→ 2NF 非主属性完全依赖整个主键（`role` 是「这次加入」的属性，不能塞进 `teams` 或 `users` 任何单方）→ 3NF 消除传递依赖（`tasks` 里不该存 `team_name`，只存 `team_id`）。实务目标是 3NF，然后**为了读性能有理由地反范式**（报表表、冗余计数列）。
 - **完整性**：外键必须显式声明；`NOT NULL` 尽量加；唯一性用 `UNIQUE` 而不是只靠代码；取值范围用 `CHECK` 或 enum。
 - SQL 标准（ISO/IEC 9075）只规定语言语法，不规定你怎么建模。
 
@@ -301,7 +304,7 @@ model TeamMember {
 
 #### 本项目现有设计的已知问题
 
-对着上面的清单体检 `prisma/schema.prisma`，有五处值得处理。**1–3 已修**（迁移 `20261124070014_fix_schema_integrity`，spec 见 `docs/specs/schema-integrity-fixes.md`），4–5 明确本轮不修，理由写在各条里。
+对着上面的清单体检 `prisma/schema.prisma`，有五处值得处理。**1–3、5 已修**（迁移 `20261124070014_fix_schema_integrity` 与 `20261126173000_add_team_member_leave`，spec 见 `docs/specs/schema-integrity-fixes.md` 与 `docs/specs/team-member-management.md`），4 明确不修，理由写在该条里。
 
 **1. 软删与唯一约束冲突（已修）**
 
@@ -350,13 +353,24 @@ FOREIGN KEY (team_id, assignee_id) REFERENCES team_members (team_id, user_id)
 
 什么条件下才修：出现“除了 NestJS 还有第二个写库入口”（脚本、后台工具、数据导入），或应用层权限校验已经出过一次线上事故。届时用原生 SQL 兜底，并在迁移里加注释说明它绕过了 Prisma。
 
-**5. `team_members` 没有 `deletedAt` / `leftAt`（本轮不修）**
+**5. `team_members` 缺少离开记录 `leftAt`（已修）**
 
-用户退队或管理员移除成员只能硬删行，团队历史就没了（“这人上个月是不是在这队”答不上来）。
+原来用户退队或管理员移除成员只能硬删行，团队历史就没了（“这人上个月是不是在这队”答不上来）。
 
-不修的理由：目前**没有任何**退队 / 移除成员的接口，加了 `leftAt` 也没有调用方会写它；而“成员关系是一次性事实”在现阶段够用。
+修法（迁移 `20261126173000_add_team_member_leave`）：加 `left_at`，并把主键从 `(team_id, user_id)` 换成 `id`，让同一人退出后重新加入能留下多段记录。活跃唯一性由部分唯一索引保证：
 
-什么条件下才修：一旦实现成员管理接口（邀请 / 移除 / 退出），必须同步加 `leftAt`（保留历史）而不是硬删，否则第一版权限审计表就是残的。
+```sql
+CREATE UNIQUE INDEX team_members_active_key
+  ON team_members (team_id, user_id)
+  WHERE left_at IS NULL;
+```
+
+连带的约定，改动时别踩：
+
+- `leftAt` 是「关系结束」，不是软删：历史行仍然有效，查活跃成员一律带 `leftAt: null`（`TeamAccessService.assertTeamMember` 是权限唯一入口，漏改等于退出者还有权限）。
+- 不要在 schema 里写回 `@@id([teamId, userId])` 或 `@@unique([teamId, userId])` —— 部分唯一索引只能写在迁移 SQL 里，写回全量唯一约束会让「退出后重新加入」直接撞主键。
+- 邀请 = 按邮箱把已注册用户直接加为 `MEMBER`，没有待接受流程；离开原因（主动退出 / 被移除）也没有单独记录，需要时再加 `left_reason` / `removed_by`。
+- 离开不会撤销已签发的 access token，但所有团队接口实时查活跃成员，所以团队权限立即失效。
 
 
 ## NestJS

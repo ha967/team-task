@@ -2,6 +2,7 @@ import 'dotenv/config';
 import bcrypt from 'bcryptjs';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import type { Prisma } from '../src/generated/prisma/client.js';
 
 const DEMO_PASSWORD = 'Password123!';
 
@@ -39,6 +40,41 @@ const prisma = new PrismaClient({
 
 function day(dayOfJanuary: number, hour = 9) {
   return new Date(Date.UTC(2026, 0, dayOfJanuary, hour, 0, 0, 0));
+}
+
+/**
+ * TeamMember 现在是 id 主键 + leftAt，不能再按 teamId_userId upsert。
+ * seed 只保证「这几个演示成员处于活跃状态」：找到活跃行就更新角色，
+ * 找不到才新建（可能是从未加入，也可能是退出后重新 seed）。
+ * 不删除 leftAt 非空的历史行，也不把旧历史「复活」。
+ */
+async function upsertActiveMember(
+  tx: Prisma.TransactionClient,
+  data: {
+    teamId: string;
+    userId: string;
+    role: 'OWNER' | 'ADMIN' | 'MEMBER';
+    joinedAt: Date;
+  },
+) {
+  const active = await tx.teamMember.findFirst({
+    where: { teamId: data.teamId, userId: data.userId, leftAt: null },
+    select: { id: true },
+  });
+
+  if (active) {
+    await tx.teamMember.update({
+      where: { id: active.id },
+      data: { role: data.role },
+      select: { id: true },
+    });
+    return;
+  }
+
+  await tx.teamMember.create({
+    data,
+    select: { id: true },
+  });
 }
 
 async function main() {
@@ -105,28 +141,32 @@ async function main() {
       },
     });
 
-    await tx.teamMember.upsert({
-      where: { teamId_userId: { teamId: frontendTeam.id, userId: alice.id } },
-      update: { role: 'OWNER' },
-      create: { teamId: frontendTeam.id, userId: alice.id, role: 'OWNER', joinedAt: day(4) },
+    await upsertActiveMember(tx, {
+      teamId: frontendTeam.id,
+      userId: alice.id,
+      role: 'OWNER',
+      joinedAt: day(4),
     });
 
-    await tx.teamMember.upsert({
-      where: { teamId_userId: { teamId: frontendTeam.id, userId: bob.id } },
-      update: { role: 'ADMIN' },
-      create: { teamId: frontendTeam.id, userId: bob.id, role: 'ADMIN', joinedAt: day(5) },
+    await upsertActiveMember(tx, {
+      teamId: frontendTeam.id,
+      userId: bob.id,
+      role: 'ADMIN',
+      joinedAt: day(5),
     });
 
-    await tx.teamMember.upsert({
-      where: { teamId_userId: { teamId: frontendTeam.id, userId: carol.id } },
-      update: { role: 'MEMBER' },
-      create: { teamId: frontendTeam.id, userId: carol.id, role: 'MEMBER', joinedAt: day(6) },
+    await upsertActiveMember(tx, {
+      teamId: frontendTeam.id,
+      userId: carol.id,
+      role: 'MEMBER',
+      joinedAt: day(6),
     });
 
-    await tx.teamMember.upsert({
-      where: { teamId_userId: { teamId: mobileTeam.id, userId: bob.id } },
-      update: { role: 'OWNER' },
-      create: { teamId: mobileTeam.id, userId: bob.id, role: 'OWNER', joinedAt: day(5) },
+    await upsertActiveMember(tx, {
+      teamId: mobileTeam.id,
+      userId: bob.id,
+      role: 'OWNER',
+      joinedAt: day(5),
     });
 
     const boardUiTask = await tx.task.upsert({

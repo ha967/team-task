@@ -79,16 +79,23 @@ model Team {
 }
 
 model TeamMember {
-  teamId   String   @map("team_id") @db.Uuid
-  userId   String   @map("user_id") @db.Uuid
-  role     TeamRole @default(MEMBER)
-  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+  id       String    @id @default(uuid()) @db.Uuid
+  teamId   String    @map("team_id") @db.Uuid
+  userId   String    @map("user_id") @db.Uuid
+  role     TeamRole  @default(MEMBER)
+  joinedAt DateTime  @default(now()) @map("joined_at") @db.Timestamptz(3)
+  // null = 仍在团队中；有值 = 该时刻离开。这不是软删：行仍然有效，是「他在这个团队待过」的历史记录。
+  // 「同一时刻只能有一条活跃关系」由迁移里的部分唯一索引保证：
+  //   team_members_active_key ON team_members (team_id, user_id) WHERE left_at IS NULL
+  // Prisma schema DSL 表达不了带 WHERE 的索引，所以这里不能写 @@id([teamId, userId]) /
+  // @@unique([teamId, userId]) —— 否则退出后重新加入会撞唯一约束，历史行也存不下。
+  leftAt   DateTime? @map("left_at") @db.Timestamptz(3)
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([teamId, userId])
-  @@index([userId])
+  // 「我加入的团队」要按 user_id + 活跃过滤，普通索引补上 left_at 才用得上
+  @@index([userId, leftAt])
   @@map("team_members")
 }
 

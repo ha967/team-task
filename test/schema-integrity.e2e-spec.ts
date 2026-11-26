@@ -53,6 +53,7 @@ describe('schema 层约束 (e2e)', () => {
   let aliceToken: string;
   let taskAuthorId: string;
   let frontendTeamId: string;
+  const createdTeamIds: string[] = [];
 
   const register = (email: string, username: string, password: string) =>
     request(app.getHttpServer())
@@ -95,6 +96,11 @@ describe('schema 层约束 (e2e)', () => {
   });
 
   afterAll(async () => {
+    // team_members 是 Cascade，删团队会一并清掉本轮造的成员关系
+    if (createdTeamIds.length > 0) {
+      await prisma.team.deleteMany({ where: { id: { in: createdTeamIds } } });
+    }
+
     // 顺序不能反：comments.author_id 现在是 Restrict，先清评论才删得掉用户
     await prisma.comment.deleteMany({
       where: { author: { email: { startsWith: EMAIL_PREFIX } } },
@@ -324,6 +330,49 @@ describe('schema 层约束 (e2e)', () => {
         select: { id: true },
       });
       expect(stillThere?.id).toBe(comment.id);
+    });
+  });
+
+  describe('team_members 的活跃唯一性（部分唯一索引）', () => {
+    it('AC14 同一 (team, user) 不能有两条活跃关系，离开后可以重新加入', async () => {
+      const team = await prisma.team.create({
+        data: {
+          name: `schema-check-team-${randomUUID().replace(/-/g, '').slice(0, 12)}`,
+          createdById: taskAuthorId,
+        },
+        select: { id: true },
+      });
+      createdTeamIds.push(team.id);
+
+      const member = await createUserRow(uniqueEmail(), uniqueUsername());
+
+      const first = await prisma.teamMember.create({
+        data: { teamId: team.id, userId: member.id, role: 'MEMBER' },
+        select: { id: true },
+      });
+
+      // 同一人第二条活跃关系：由 team_members_active_key
+      // （(team_id, user_id) WHERE left_at IS NULL）在库层挡下
+      const error = await captureError(() =>
+        prisma.teamMember.create({
+          data: { teamId: team.id, userId: member.id, role: 'ADMIN' },
+          select: { id: true },
+        }),
+      );
+      expect(error.code).toBe('P2002');
+
+      // 把第一段标记为离开后，新的一段可以正常加入：历史行与活跃行共存
+      await prisma.teamMember.update({
+        where: { id: first.id },
+        data: { leftAt: new Date() },
+        select: { id: true },
+      });
+
+      const second = await prisma.teamMember.create({
+        data: { teamId: team.id, userId: member.id, role: 'MEMBER' },
+        select: { id: true },
+      });
+      expect(second.id).not.toBe(first.id);
     });
   });
 });

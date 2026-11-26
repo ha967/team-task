@@ -355,10 +355,8 @@ describe('团队模块 (e2e)', () => {
       expect(res.body.name).toBe('新团队');
       expect(res.body.role).toBe('OWNER');
 
-      const membership = await prisma.teamMember.findUnique({
-        where: {
-          teamId_userId: { teamId: res.body.id, userId: aliceUserId },
-        },
+      const membership = await prisma.teamMember.findFirst({
+        where: { teamId: res.body.id, userId: aliceUserId, leftAt: null },
         select: { role: true },
       });
       expect(membership?.role).toBe('OWNER');
