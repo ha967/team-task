@@ -6,6 +6,18 @@ import { Topbar } from './Topbar';
 const BLURB = '小团队 · 团队协作与任务管理';
 
 function getViewTitle(pathname: string) {
+  if (pathname === '/teams') {
+    return '团队';
+  }
+
+  if (pathname === '/teams/new') {
+    return '新建团队';
+  }
+
+  if (pathname.startsWith('/teams/')) {
+    return '团队详情';
+  }
+
   if (pathname === '/tasks') {
     return '概览';
   }

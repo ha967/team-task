@@ -6,6 +6,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   SquarePlus,
+  Users,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../../features/auth/AuthContext';
@@ -21,6 +22,8 @@ interface NavItem {
 
 export const NAV_ITEMS: NavItem[] = [
   { to: '/tasks', label: '概览', icon: LayoutDashboard, end: true },
+  // 不设 end：/teams/new 与 /teams/:teamId 也要保持「团队」高亮
+  { to: '/teams', label: '团队', icon: Users },
   { to: '/tasks/new', label: '新建任务', icon: SquarePlus, end: true },
 ];
 

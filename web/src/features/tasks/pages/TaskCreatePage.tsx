@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ChevronLeft } from 'lucide-react';
+import { toErrorMessage } from '../../../shared/api/error-message';
 import { ErrorNote, LoadingState } from '../../../shared/ui/StateNotes';
 import { useToast } from '../../../shared/ui/Toast';
 import { teamsApi } from '../../teams/api';
@@ -30,9 +31,11 @@ export function TaskCreatePage() {
   useEffect(() => {
     let cancelled = false;
 
-    teamsApi
-      .list()
-      .then((result) => {
+    async function loadTeams() {
+      try {
+        // 取全量而不是第一页：团队超过 20 个时，下拉不能静默缺项
+        const result = await teamsApi.listAll();
+
         if (cancelled) {
           return;
         }
@@ -43,17 +46,18 @@ export function TaskCreatePage() {
         if (result.items.length === 1) {
           setTeamId(result.items[0].id);
         }
-      })
-      .catch((err: unknown) => {
+      } catch (err) {
         if (!cancelled) {
-          setTeamsError(err instanceof Error ? err.message : '团队加载失败');
+          setTeamsError(toErrorMessage(err, '团队加载失败'));
         }
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) {
           setTeamsLoading(false);
         }
-      });
+      }
+    }
+
+    void loadTeams();
 
     return () => {
       cancelled = true;

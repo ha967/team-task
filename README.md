@@ -98,12 +98,12 @@ docker compose --profile preview up -d nginx   # 打开 http://localhost:8080
 - 评论：`GET /api/tasks/:taskId/comments`（按创建时间升序）、`POST /api/tasks/:taskId/comments`、`PATCH /api/comments/:commentId`、`DELETE /api/comments/:commentId`（软删除）。任务所属团队的成员都能读 / 写；编辑限作者本人，删除限作者或团队 `OWNER` / `ADMIN`。任务或团队软删后评论一并 404；「任务算不算存在」复用 `TasksService.assertTaskAlive`，不在评论模块里另写一份。
 - 团队成员：`POST /api/teams/:teamId/members`（按邮箱邀请已注册用户，入队固定为 `MEMBER`）、`PATCH /api/teams/:teamId/members/:userId`（仅 `OWNER` 改角色）、`DELETE /api/teams/:teamId/members/:userId`（移除；`userId` 是自己即退出）。`OWNER` / `ADMIN` 可邀请，`ADMIN` 只能移除 `MEMBER`，任何操作不能让团队失去最后一个活跃 `OWNER`。离开写 `left_at`、保留历史行；团队列表 / 详情、任务、评论一律只认活跃成员。
 - 数据：Postgres + Prisma 迁移 + seed（alice / bob / carol，密码 `Password123!`）。
-- 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。任务详情页底部有通栏评论区：读取列表、发表、行内编辑自己的评论、确认后软删。
+- 前端：`/login`、`/register`、`/tasks`（列表）、`/tasks/new`（新建）、`/tasks/:taskId`（详情）、`/tasks/:taskId/edit`（编辑）。任务的新建 / 编辑 / 软删都在前端完成，团队与成员下拉来自 `web/src/features/teams/`。任务详情页底部有通栏评论区：读取列表、发表、行内编辑自己的评论、确认后软删。团队模块有 `/teams`（列表 + 搜索）、`/teams/new`（新建）和 `/teams/:teamId`（详情 + 成员管理：邀请、改角色、移除、退出），操作按当前用户角色预判，后端仍然兜底。
 
 尚未实现（改动时留意）：
 
 - 成员管理只有「直接加人」：没有待接受的邀请流程、历史成员查询接口、跨团队用户搜索；也没有区分主动退出与被移除（只有 `left_at`）。
-- 前端没有团队相关页面：`web/src/features/teams/` 只有拉数据的 `api.ts` / `useTeamMembers.ts`（给任务表单选团队和负责人用），没有列表 / 详情 / 成员管理页。
+- 前端团队模块只覆盖列表 / 详情 / 新建与成员管理；没有团队改名 / 解散、按团队筛选任务、历史成员视图。
 - **任务写路径有一个极小的 TOCTOU 窗口**：`getTaskOrThrow` 判定「任务存在且团队未软删」之后，`PATCH` / `DELETE` 的 `update` 只按 `id` 匹配；若团队恰好在这两步之间被软删，这次写入仍会成功。窗口在单请求内、且需要并发软删，暂不处理。彻底闭合要把 `update` 换成 `updateMany({ where: { id, ...TASK_ALIVE_FILTER } })` 并检查 `count === 1`。
 - **负责人已不在团队 / 已被软删时，前端编辑页的下拉里没有这个人**：`GET /api/teams/:id` 的成员列表只返回活跃成员（`leftAt: null`）且过滤 `user.deletedAt: null`，而任务详情 / 列表的 `assignee` 不过滤 —— 两者不一致会让下拉渲染成空白，但 `assigneeId` 仍是旧值，保存其他字段时会静默保留原负责人。当前没有用户注销接口、seed 也不产生这种数据，暂不处理（修法：详情里把已离开负责人标成「已离开 / 已注销」，或编辑时要求显式改派）。
 - schema 层还剩一条故意不修的问题（`tasks.assignee_id` 没有复合外键保证「被指派人属于该团队」），详见「表设计与建模规范 → 本项目现有设计的已知问题」；`team_members` 的 `leftAt` 已在迁移 `20261126173000_add_team_member_leave` 中补上。

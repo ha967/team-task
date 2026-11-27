@@ -29,3 +29,21 @@ export interface TeamListResponse {
   page: number;
   pageSize: number;
 }
+
+export interface CreateTeamPayload {
+  name: string;
+  description?: string | null;
+}
+
+export interface InviteTeamMemberPayload {
+  email: string;
+}
+
+export interface UpdateTeamMemberRolePayload {
+  role: TeamRole;
+}
+
+export interface RemoveTeamMemberResponse {
+  userId: string;
+  left: boolean;
+}

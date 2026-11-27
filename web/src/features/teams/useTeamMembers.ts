@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toErrorMessage } from '../../shared/api/error-message';
 import { teamsApi } from './api';
 import type { TeamMember } from './types';
 
@@ -37,7 +38,7 @@ export function useTeamMembers(teamId: string | null) {
       })
       .catch((err: unknown) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : '团队成员加载失败');
+          setError(toErrorMessage(err, '团队成员加载失败'));
         }
       })
       .finally(() => {
